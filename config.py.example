@@ -1,0 +1,37 @@
+"""Shared configuration for CV Ranking and Technical Response Evaluator notebooks.
+
+Usage:
+  1. Copy this file as config.py in the same directory as the notebooks
+  2. Fill in the values below with your environment-specific paths
+  3. config.py is excluded from version control via .gitignore
+"""
+import os
+
+# ── Volume base path ─────────────────────────────────────────────────
+# Point to the Unity Catalog Volume that contains your data folders
+VOLUME_BASE = "/Volumes/<catalog>/<schema>/<volume>/<base_path>"
+
+# ── Input paths ──────────────────────────────────────────────────────
+CVS_PATH = f"{VOLUME_BASE}/cvs"                                        # PDF CVs folder
+ROLE_DESCRIPTION_LOCAL_PATH = f"{VOLUME_BASE}/role_description/job_description.txt"  # Job description text file
+TECHNICAL_RESPONSES_PATH = f"{VOLUME_BASE}/technical_responses/"        # Candidate response PDFs folder
+LOGO_PATH = f"{VOLUME_BASE}/logo/mercedes_logo.png"                    # Company logo for PDF headers
+
+# ── Output paths ─────────────────────────────────────────────────────
+TECHNICAL_TESTS_OUTPUT_PATH = f"{VOLUME_BASE}/technical_tests"          # Generated technical test PDFs
+EVALUATION_REPORTS_OUTPUT_PATH = f"{VOLUME_BASE}/evaluation_reports"    # Generated evaluation report PDFs
+
+# ── AI model ─────────────────────────────────────────────────────────
+# Databricks Foundation Model API endpoint
+AI_MODEL = "databricks-claude-sonnet-4"
+
+# ── Ranking parameters ───────────────────────────────────────────────
+# TOP_X: number of top-ranked candidates to generate technical tests for
+#   0 = generate tests for ALL candidates (no limit)
+#   N = generate tests for the top N candidates only
+TOP_X = 3
+
+# ── Job description source ───────────────────────────────────────────
+# Optional: set the env var JOB_DESCRIPTION_URL to fetch from a remote source
+# (e.g. a Confluence page). If unset, falls back to ROLE_DESCRIPTION_LOCAL_PATH.
+JOB_DESCRIPTION_URL = os.environ.get("JOB_DESCRIPTION_URL")

@@ -1,0 +1,7 @@
+# Local configuration (contains environment-specific paths and settings)
+config.py
+resources/
+
+# Python
+__pycache__/
+*.pyc
