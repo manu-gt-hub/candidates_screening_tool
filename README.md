@@ -4,141 +4,165 @@ Automated pipeline for screening candidate CVs, generating tailored technical te
 
 > **⚠️ Disclaimer**: This pipeline uses AI models to parse, evaluate, and generate content. AI outputs may contain errors, inaccuracies, or biases. All rankings, evaluations, technical tests, and reports **require human review** before being used in any hiring decision. This tool is designed to assist — not replace — human judgement in the recruitment process.
 
+---
+
 ## Overview
 
-The pipeline consists of two independent notebooks, a shared configuration file, and a job orchestration script:
+The pipeline consists of two notebooks, a shared utility package (`utils/`), a configuration file, a bootstrap script, and a job orchestration script:
 
 ```
 technical_tests/
-├── config.py.example        # Configuration template (commit this)
-├── config.py                # Local configuration with real values (gitignored)
-├── create_jobs.py           # Script to create Databricks Jobs with file-arrival triggers
-├── .gitignore               # Excludes config.py and Python cache
-├── README.md                # This file
-├── tech_scenarios_creator   # Notebook 1: CV ranking + technical test generation
-└── tech_responses_evaluator # Notebook 2: Technical response evaluation
+├── config.py.example                  # Configuration template (commit this)
+├── config.py                          # Local config with real values (gitignored)
+├── build_setup.py                     # Bootstrap script: creates folders + config.py
+├── create_jobs.py                     # Script to create scheduled Databricks Jobs
+├── .gitignore
+├── README.md
+├── tech_scenarios_creator              # Notebook 1: CV ranking + test generation
+├── tech_responses_evaluator            # Notebook 2: Technical response evaluation
+├── utils/                             # Shared utility modules
+│   ├── __init__.py
+│   ├── config_loader.py               #   Config import + validation
+│   ├── pdf_parser.py                  #   PDF parsing with ai_parse_document
+│   ├── job_description.py             #   Job description loading (local file)
+│   └── pdf_reports.py                 #   PDF generation (tests, ranking, evaluations)
+└── resources/                          # All input/output data (gitignored)
+    ├── cvs_landing/                   # ↓ Input: candidate CV PDFs
+    ├── job_description/               # ↓ Input
+    │   └── job_description.txt
+    ├── images/                        # ↓ Input
+    │   └── <company_logo>.png
+    ├── technical_tests/               # ↑ Output: one-page technical test PDFs
+    ├── report_analysis/               # ↑ Output: candidate ranking report PDF
+    └── technical_responses/            # Candidate technical responses
+        ├── landing/                   # ↓ Input: candidate response PDFs
+        └── analysis/                  # ↑ Output: evaluation report PDFs
 ```
+
+---
 
 ## Setup
 
-### 1. Configuration
+### 1. Create the required folder structure
+
+The easiest way is to run the bootstrap script:
 
 ```bash
-# Copy the template and fill in your values
-cp config.py.example config.py
+python build_setup.py
 ```
 
-Edit `config.py` with your environment-specific values:
+This creates all required directories under `resources/` and generates `config.py` from `config.py.example` if it doesn't exist yet. The script is idempotent — safe to run multiple times.
+
+Alternatively, create the folders manually:
+
+```bash
+mkdir -p resources/cvs_landing
+mkdir -p resources/job_description
+mkdir -p resources/images
+mkdir -p resources/technical_tests
+mkdir -p resources/report_analysis
+mkdir -p resources/technical_responses/landing
+mkdir -p resources/technical_responses/analysis
+```
+
+Then populate the input folders:
+
+| Folder | What to place here |
+|---|---|
+| `resources/cvs_landing/` | Candidate CV files in **PDF** format |
+| `resources/job_description/job_description.txt` | Plain-text description of the role to hire for |
+| `resources/images/` | Company logo in **PNG** format (referenced by `LOGO_PATH` in config) |
+| `resources/technical_responses/landing/` | Candidate technical response PDFs (for notebook 2) |
+
+Output folders (`technical_tests/`, `report_analysis/`, `technical_responses/analysis/`) are created automatically if missing.
+
+### 2. Configuration
+
+```bash
+cp config.py.example config.py   # or run build_setup.py (does this automatically)
+```
+
+Edit `config.py`:
 
 | Variable | Description |
 |---|---|
-| `VOLUME_BASE` | Base path to the Unity Catalog Volume containing all data folders |
+| `RESOURCES_BASE` | Auto-resolved from `config.py` location — points to `resources/` |
 | `CVS_PATH` | Folder with candidate CV PDFs |
-| `ROLE_DESCRIPTION_LOCAL_PATH` | Path to the job description text file |
-| `TECHNICAL_RESPONSES_PATH` | Folder with candidate technical response PDFs |
+| `ROLE_DESCRIPTION_LOCAL_PATH` | Path to the job description `.txt` file |
+| `TECHNICAL_RESPONSES_PATH` | Folder with candidate technical response PDFs (`technical_responses/landing/`) |
 | `LOGO_PATH` | Company logo PNG for PDF headers |
 | `TECHNICAL_TESTS_OUTPUT_PATH` | Output folder for generated technical test PDFs |
-| `EVALUATION_REPORTS_OUTPUT_PATH` | Output folder for generated evaluation report PDFs |
-| `AI_MODEL` | Databricks Foundation Model API endpoint (e.g. `databricks-claude-sonnet-4`) |
-| `TOP_X` | Number of top candidates for test generation (`0` = all candidates) |
-| `JOB_DESCRIPTION_URL` | *(optional)* Set env var `JOB_DESCRIPTION_URL` to fetch the job description from a remote URL (e.g. Confluence). Falls back to local file if unset. |
+| `EVALUATION_REPORTS_OUTPUT_PATH` | Output folder for the candidate ranking report PDF |
+| `TECHNICAL_ANSWERS_ANALYSIS_PATH` | Output folder for evaluation report PDFs (`technical_responses/analysis/`) |
+| `AI_MODEL` | Databricks Foundation Model API endpoint (e.g. `databricks-claude-opus-4-6`) |
+| `MIN_MATCH_THRESHOLD` | Minimum match % to generate a technical test (default: `70`). Ignored when `GENERATE_TESTS_FOR_ALL_CANDIDATES` is `True` |
+| `GENERATE_TESTS_FOR_ALL_CANDIDATES` | When `True`, generate technical tests for all candidates regardless of score (default: `False`) |
 
-### 2. Volume structure
+All paths are resolved **relative to `config.py`** using `os.path`, so the project works for any user without hardcoded paths.
 
-The pipeline expects the following folder layout inside your Unity Catalog Volume:
+### 3. Compute requirements
 
-```
-<volume_base>/
-├── cvs/                    # Input: candidate CV PDFs
-├── role_description/
-│   └── job_description.txt # Input: job/role description
-├── logo/
-│   └── mercedes_logo.png   # Input: company logo for PDF headers
-├── technical_tests/        # Output: generated technical test PDFs
-├── technical_responses/    # Input: candidate response PDFs
-└── evaluation_reports/     # Output: generated evaluation report PDFs
-```
-
-### 3. Compute
-
-Both notebooks run on **Databricks Serverless** compute (auto-selected). They require:
-- Access to the configured Unity Catalog Volume
-- Access to the Databricks Foundation Model API (`ai_query`)
+Both notebooks require **Databricks Serverless** compute with:
+- Access to the Foundation Model API (`ai_query`, `ai_parse_document`)
 - The `reportlab` Python package (installed automatically via `%pip`)
 
-### 4. Job orchestration (file-arrival triggers)
+### 4. Job orchestration (optional)
 
-`create_jobs.py` creates two Databricks Jobs that run the notebooks automatically when new files arrive:
+`create_jobs.py` creates two periodic Databricks Jobs:
 
-| Job | Notebook | Monitors |
+| Job | Notebook | Description |
 |---|---|---|
-| **CV Ranking & Technical Test Generation** | `tech_scenarios_creator` | `CVS_PATH` — triggers on new CV PDFs |
-| **Technical Response Evaluator** | `tech_responses_evaluator` | `TECHNICAL_RESPONSES_PATH` — triggers on new response PDFs |
-
-To create the jobs, run the script once from a notebook cell in the same folder:
+| **CV Ranking & Technical Test Generation** | `tech_scenarios_creator` | Processes CVs in `cvs_landing/` |
+| **Technical Response Evaluator** | `tech_responses_evaluator` | Processes responses in `technical_responses/landing/` |
 
 ```python
 %run ./create_jobs
 ```
 
-Or from a terminal with `DATABRICKS_HOST` and `DATABRICKS_TOKEN` configured:
-
-```bash
-python create_jobs.py
-```
-
-The script resolves all paths dynamically from `config.py` and the current user context — no hardcoded values. Both jobs are created in **UNPAUSED** state and start monitoring immediately.
-
-**Trigger settings** (configurable in `create_jobs.py`):
-
-| Constant | Default | Description |
-|---|---|---|
-| `MIN_TIME_BETWEEN_TRIGGERS` | 60s | Minimum cooldown between consecutive runs |
-| `WAIT_AFTER_LAST_CHANGE` | 30s | Debounce window — waits after the last file change before triggering (batches multiple uploads) |
+> **Note**: File-arrival triggers are not supported for workspace paths. These jobs use a cron schedule instead (default: every 15 minutes, configurable via `CRON_SCHEDULE` and `TIMEZONE` in the script).
 
 ---
 
 ## Notebook 1: `tech_scenarios_creator`
 
-**Purpose**: Parse candidate CVs, rank them against a job description, and generate personalised technical tests as PDFs.
+**Purpose**: Parse candidate CVs, rank them against a job description, generate a ranking summary report, and produce one-page technical tests as PDFs.
 
 ### Pipeline flow
 
 ```
-[CV PDFs] → ai_parse_document → [Full text]
-                                      ↓
-[Job description] ──────────────→ ai_query → [Ranking + evaluation per candidate]
-                                      ↓
-                              Filter: non-discarded + TOP_X
-                                      ↓
-                                 ai_query → [3 technical scenarios per candidate]
-                                      ↓
-                                 reportlab → [PDF technical tests]
+[CV PDFs] → Python read → ai_parse_document → [Extracted text]
+                                                     ↓
+[Job description] ───────────────────→ ai_query → [Ranking + evaluation]
+                                                     ↓
+                                     ┌──────────────────┴──────────────────┐
+                                     ↓                                    ↓
+                          Filter: >= MIN_MATCH_THRESHOLD       All candidates
+                          (or all if GENERATE_ALL=True)              ↓
+                                     ↓                      Ranking Report PDF
+                                ai_query → [3 scenarios]
+                                     ↓
+                              One-page PDF tests
 ```
 
 ### Cells (execution order)
 
 | # | Cell | Description |
 |---|---|---|
-| 1 | **Load configuration** | Dynamically imports `config.py` from the notebook's directory |
-| 2 | **Parse all CVs** | Uses `ai_parse_document` to extract text from all PDFs in the CVs folder |
-| 3 | **Load role description** | Fetches job description from URL (if configured) or local file |
-| 4 | **AI ranking** | Evaluates each CV against the job description. Outputs: name, ranking percentage, report summary, role, seniority, years of experience, key technologies, highlights, gaps, discarded flag, discard reason |
-| 5 | **Configure TOP_X** | Reads `TOP_X` from config (`0` = all candidates) |
-| 6 | **Generate technical tests** | For the top X non-discarded candidates, generates 3 tailored technical scenarios per candidate via AI |
-| 7 | **Install reportlab** | Installs the PDF generation library |
-| 8 | **Generate PDFs** | Creates professional PDF technical tests with company logo |
+| 1 | **Setup & Configuration** | Imports config via `utils.config_loader`, validates all required variables and paths |
+| 2 | **Parse candidate CVs** | Uses `utils.pdf_parser` to read and parse all PDFs into a Spark temp view |
+| 3 | **Load job description** | Uses `utils.job_description` to load from local file |
+| 4 | **Rank candidates with AI** | Evaluates each CV via `ai_query`, assigns match percentage and metadata |
+| 5 | **Generate technical tests with AI** | For eligible candidates (see filtering below), generates 3 scenarios via `ai_query` |
+| 6 | **Install reportlab** | `%pip install reportlab` |
+| 7 | **Generate PDF reports** | Uses `utils.pdf_reports` to create technical test PDFs + ranking report in one cell |
 
-### Discarded candidates
+### Candidate filtering for technical tests
 
-Candidates missing **mandatory** skills for the role (e.g., Spark, SQL, Python/Java/Scala for a Data Engineer) are automatically flagged as `discarded = true` with a reason. They appear in the ranking (cell 4) but are excluded from technical test generation (cell 6).
-
-### TOP_X behaviour
-
-| Value | Behaviour |
-|---|---|
-| `TOP_X = 0` | Generate technical tests for **all** non-discarded candidates |
-| `TOP_X = N` | Generate technical tests for the **top N** candidates (by ranking score) |
+| Parameter | Value | Behaviour |
+|---|---|---|
+| `GENERATE_TESTS_FOR_ALL_CANDIDATES` | `False` (default) | Only candidates with match score **≥ `MIN_MATCH_THRESHOLD`** receive a technical test |
+| `GENERATE_TESTS_FOR_ALL_CANDIDATES` | `True` | All candidates receive a technical test, regardless of score |
+| `MIN_MATCH_THRESHOLD` | `70` (default) | Minimum match % to qualify for test generation. Also sets the green tier boundary in the ranking report |
 
 ---
 
@@ -149,23 +173,24 @@ Candidates missing **mandatory** skills for the role (e.g., Spark, SQL, Python/J
 ### Pipeline flow
 
 ```
-[Response PDFs] → ai_parse_document → [Full text]
-                                            ↓
-[Job description] ────────────────────→ ai_query → [Evaluation per candidate]
-                                            ↓
-                                       reportlab → [PDF evaluation reports]
+[Response PDFs] → Python read → ai_parse_document → [Extracted text]
+  (technical_responses/landing/)                          ↓
+[Job description] ───────────────────────────→ ai_query → [Evaluation per candidate]
+                                                          ↓
+                                                     reportlab → [PDF evaluation reports]
+                                                              (technical_responses/analysis/)
 ```
 
 ### Cells (execution order)
 
 | # | Cell | Description |
 |---|---|---|
-| 1 | **Load configuration** | Dynamically imports `config.py` from the notebook's directory |
-| 2 | **Load role description** | Fetches job description (same URL/local fallback logic) |
-| 3 | **Parse response PDFs** | Extracts text from all PDFs in the technical responses folder |
-| 4 | **AI evaluation** | Evaluates each response. Outputs: candidate name, match percentage, suitability assessment, highlights, strengths, weaknesses, per-scenario scores and feedback, overall recommendation, improvement areas |
-| 5 | **Install reportlab** | Installs the PDF generation library |
-| 6 | **Generate PDF reports** | Creates colour-coded evaluation reports (green ≥70%, amber 50-69%, red <50%) with recommendation (Strong Hire / Hire / Lean Hire / Lean No Hire / No Hire) |
+| 1 | **Setup & Configuration** | Imports config via `utils.config_loader`, validates all required variables and paths |
+| 2 | **Parse candidate response PDFs** | Uses `utils.pdf_parser` to read and parse response PDFs into a Spark temp view |
+| 3 | **Load job description** | Uses `utils.job_description` to load from local file |
+| 4 | **Evaluate responses with AI** | Evaluates each response via `ai_query` with structured JSON output |
+| 5 | **Install reportlab** | `%pip install reportlab` |
+| 6 | **Generate evaluation PDF reports** | Uses `utils.pdf_reports` to create colour-coded evaluation reports per candidate |
 
 ---
 
@@ -180,25 +205,33 @@ Candidates missing **mandatory** skills for the role (e.g., Spark, SQL, Python/J
 
 ## Output PDFs
 
-### Technical tests (Notebook 1)
-- Company logo in header (top-right, 4cm)
+### Technical tests (Notebook 1 → `resources/technical_tests/`)
+- **One page per candidate** (compact layout with automatic content truncation)
+- Company logo in header (6 cm)
 - Test title, instructions, 3 technical scenarios
-- Each scenario: description, concrete example, evaluation question
+- Each scenario: description, concrete example (amber), evaluation question (wine red)
+- Colour palette: navy title, teal scenario headings, slate instructions, dark grey body
 - Tailored to the candidate's seniority level and technologies
 
-### Evaluation reports (Notebook 2)
-- Colour-coded match score card
+### Candidate ranking report (Notebook 1 → `resources/report_analysis/`)
+- Single PDF: `Candidate_Ranking_Report_<date>.pdf`
+- All candidates sorted by match score (descending), with score, seniority, experience, summary, and key technologies
+- Colour-coded scores (green ≥ `MIN_MATCH_THRESHOLD`, amber ≥ 50%, red < 50%)
+
+### Evaluation reports (Notebook 2 → `resources/technical_responses/analysis/`)
+- One PDF per candidate: `Evaluation_Report_<Name>_<date>.pdf`
+- Colour-coded match score card with recommendation (Strong Hire / Hire / Lean Hire / Lean No Hire / No Hire)
 - Suitability assessment and key highlights
 - Per-scenario scores with feedback
 - Strengths, weaknesses, and improvement areas
-- Overall recommendation
 
 ---
 
 ## Security Notes
 
-- `config.py` contains environment-specific paths and is excluded from version control via `.gitignore`
-- The `JOB_DESCRIPTION_URL` is read from an environment variable, never hardcoded
-- No API keys, usernames, or sensitive paths are stored in the notebooks, scripts, or this README
-- `create_jobs.py` resolves the current user and notebook paths at runtime via the Databricks SDK
-- To set up a new environment, copy `config.py.example` → `config.py` and fill in your values
+- `config.py` is excluded from version control via `.gitignore`
+- `resources/` is excluded from version control via `.gitignore` — it contains candidate data (CVs, responses), company assets (logo), and generated reports
+- No API keys, usernames, or sensitive paths in notebooks, scripts, or this README
+- All paths are resolved dynamically relative to the project directory
+- `create_jobs.py` resolves the current user at runtime via the Databricks SDK
+- **Important**: Clear notebook cell outputs before committing — they may contain internal paths or candidate names

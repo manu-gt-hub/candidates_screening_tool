@@ -1,5 +1,7 @@
 # Local configuration (contains environment-specific paths and settings)
 config.py
+
+# Resources folder (candidate CVs, job descriptions, logos, generated PDFs)
 resources/
 
 # Python

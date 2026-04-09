@@ -1,109 +1,53 @@
 # Databricks notebook source
-# DBTITLE 1,Load configuration
-# Load shared configuration (dynamically resolved from notebook location)
+# DBTITLE 1,Setup & Configuration
+# ── Setup & Configuration ────────────────────────────────────────
 import sys, os
 
+# Ensure project dir is in sys.path and clear stale module caches
 _nb_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
-sys.path.insert(0, f"/Workspace{os.path.dirname(_nb_path)}")
-import config
+_project_dir = f"/Workspace{os.path.dirname(_nb_path)}"
+if _project_dir not in sys.path:
+    sys.path.insert(0, _project_dir)
+for _m in [m for m in sys.modules if m == "config" or m.startswith("utils")]:
+    del sys.modules[_m]
 
-print(f"Configuration loaded:")
-print(f"  CVs path:              {config.CVS_PATH}")
-print(f"  Role description:      {config.ROLE_DESCRIPTION_LOCAL_PATH}")
-print(f"  Technical tests out:   {config.TECHNICAL_TESTS_OUTPUT_PATH}")
-print(f"  Logo:                  {config.LOGO_PATH}")
-print(f"  AI model:              {config.AI_MODEL}")
-print(f"  TOP_X:                 {config.TOP_X}")
-print(f"  Job description URL:   {config.JOB_DESCRIPTION_URL or 'Not set (will use local)'}")
+from utils.config_loader import load_config, validate_config
 
-# COMMAND ----------
+config = load_config(dbutils)
+validate_config(config, mode="scenarios")
 
-# DBTITLE 1,Parse all CVs from Volume
-# Step 1: Parse all CVs (PDFs) and extract full text
-spark.sql(f"""
-CREATE OR REPLACE TEMPORARY VIEW cv_texts AS
-WITH parsed_documents AS (
-  SELECT
-    path,
-    ai_parse_document(
-      content,
-      map('version', '2.0')
-    ) AS parsed
-  FROM read_files(
-    '{config.CVS_PATH}',
-    format => 'binaryFile'
-  )
-)
-SELECT
-  path,
-  concat_ws('\\n\\n',
-    transform(
-      try_cast(parsed:document:elements AS ARRAY<VARIANT>),
-      element -> try_cast(element:content AS STRING)
-    )
-  ) AS full_text
-FROM parsed_documents
-WHERE try_cast(parsed:error_status AS STRING) IS NULL
-""")
-print(f"\u2713 cv_texts view created from: {config.CVS_PATH}")
+print(f"  CVs path:      {config.CVS_PATH}")
+print(f"  Tests output:  {config.TECHNICAL_TESTS_OUTPUT_PATH}")
+print(f"  Reports out:   {config.EVALUATION_REPORTS_OUTPUT_PATH}")
+print(f"  AI model:      {config.AI_MODEL}")
+print(f"  Min threshold: {config.MIN_MATCH_THRESHOLD}%")
+print(f"  Tests for all: {config.GENERATE_TESTS_FOR_ALL_CANDIDATES}")
 
 # COMMAND ----------
 
-# DBTITLE 1,Load role description
-# Step 1b: Load role/job description
-# Try fetching from Confluence first; fall back to local file if unavailable
-import requests
-from bs4 import BeautifulSoup
+# DBTITLE 1,Parse candidate CVs
+# ── Parse candidate CVs ──────────────────────────────────────────
+from utils.pdf_parser import parse_pdfs_to_view
 
-job_description_text = None
-
-# --- Attempt 1: Confluence URL (only if env var is set) ---
-if config.JOB_DESCRIPTION_URL:
-    try:
-        print(f"Fetching job description from: {config.JOB_DESCRIPTION_URL}")
-        resp = requests.get(config.JOB_DESCRIPTION_URL, timeout=15, verify=False)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "html.parser")
-        content_div = (
-            soup.find("div", {"id": "main-content"})
-            or soup.find("div", {"class": "wiki-content"})
-            or soup.find("article")
-            or soup.find("div", {"role": "main"})
-        )
-        if content_div:
-            job_description_text = content_div.get_text(separator="\n", strip=True)
-        else:
-            job_description_text = soup.get_text(separator="\n", strip=True)
-
-        if len(job_description_text.strip()) < 50:
-            raise ValueError("Confluence page content too short, likely not parsed correctly")
-        print(f"\u2713 Loaded from Confluence ({len(job_description_text)} chars)")
-
-    except Exception as e:
-        print(f"\u2717 Confluence unavailable: {e}")
-        job_description_text = None
-else:
-    print("JOB_DESCRIPTION_URL not set, skipping Confluence fetch")
-
-# --- Attempt 2: Local file fallback ---
-if not job_description_text:
-    try:
-        print(f"Falling back to local file: {config.ROLE_DESCRIPTION_LOCAL_PATH}")
-        rows = spark.read.text(config.ROLE_DESCRIPTION_LOCAL_PATH).collect()
-        job_description_text = "\n".join([r.value for r in rows])
-        print(f"\u2713 Loaded from local file ({len(job_description_text)} chars)")
-    except Exception as e:
-        raise RuntimeError(f"Could not load job description from any source: {e}")
-
-# --- Create temp view for SQL cells ---
-from pyspark.sql import Row
-spark.createDataFrame([Row(full_text=job_description_text)]).createOrReplaceTempView("role_description")
-print(f"\n\u2713 role_description view created \u2014 preview:\n{job_description_text[:300]}...")
+n_cvs = parse_pdfs_to_view(spark, config.CVS_PATH, view_name="cv_texts")
+if n_cvs == 0:
+    raise RuntimeError(f"No PDF files found in {config.CVS_PATH}")
 
 # COMMAND ----------
 
-# DBTITLE 1,Generate candidate ranking with AI analysis
-# Step 2: Analyze each CV against the job description and generate candidate ranking
+# DBTITLE 1,Load job description
+# ── Load job description ─────────────────────────────────────────
+from utils.job_description import load_job_description
+
+job_description_text = load_job_description(spark, config)
+
+# COMMAND ----------
+
+# DBTITLE 1,Rank candidates with AI
+# Step 2: Rank all candidates against the job description (no one is discarded)
+_min_interview = config.MIN_MATCH_THRESHOLD
+print(f"Minimum match for technical test: {_min_interview}%")
+
 _ranking_sql = f"""
 SELECT
   parsed_result.*,
@@ -116,9 +60,6 @@ FROM (
         CONCAT(
           'You are an expert HR analyst and technical recruiter. Evaluate the following CV/resume against the provided JOB DESCRIPTION. The ranking must reflect how well the candidate matches the specific role requirements.
 
-CRITICAL \u2014 Mandatory requirements check:
-Identify the MANDATORY skills and experience from the job description (e.g. for a Data Engineer: Spark, SQL, Python/Java/Scala, cloud platforms, ETL experience). If the candidate is missing ANY mandatory requirement, set discarded = true and explain why in discarded_reason. Only non-negotiable core skills should trigger a discard \u2014 desirable/nice-to-have skills should NOT.
-
 Return ONLY a valid JSON object with exactly these fields:
 
 - name (string): Full name of the candidate
@@ -130,8 +71,8 @@ Return ONLY a valid JSON object with exactly these fields:
 - key_technologies (array of strings): All technologies mentioned in the CV
 - cv_highlights (array of strings): 3-5 most impressive achievements RELEVANT to this job
 - gaps (array of strings): Missing skills or requirements from the JOB DESCRIPTION
-- discarded (boolean): true if the candidate fails to meet one or more MANDATORY requirements, false otherwise
-- discarded_reason (string or null): If discarded is true, a clear explanation of which mandatory requirements are missing. If discarded is false, null
+- discarded (boolean): ALWAYS set to false
+- discarded_reason (string or null): ALWAYS set to null
 
 === JOB DESCRIPTION ===
 ',
@@ -150,38 +91,39 @@ Return ONLY a valid JSON object with exactly these fields:
   FROM cv_texts cv
   CROSS JOIN role_description rd
 )
-ORDER BY parsed_result.discarded ASC, parsed_result.ranking_percentage DESC
+ORDER BY parsed_result.ranking_percentage DESC
 """
 
-display(spark.sql(_ranking_sql))
+# Materialize once to avoid re-calling AI in downstream cells
+_ranking_df = spark.sql(_ranking_sql)
+ranking_rows = _ranking_df.collect()
+ranking_df = spark.createDataFrame(ranking_rows, _ranking_df.schema)
+display(ranking_df)
+print(f"\nRanked {len(ranking_rows)} candidate(s)")
 
 # COMMAND ----------
 
-# DBTITLE 1,Configure TOP X candidates parameter
-# Configuration loaded from config.py
-TOP_X = config.TOP_X
+# DBTITLE 1,Generate technical tests with AI
+# Step 4: Generate technical tests for candidates >= MIN_MATCH_THRESHOLD %
 
-if TOP_X == 0:
-    print("TOP_X = 0 → will generate technical tests for ALL non-discarded candidates")
+_min_pct = config.MIN_MATCH_THRESHOLD
+_gen_all = config.GENERATE_TESTS_FOR_ALL_CANDIDATES
+
+if _gen_all:
+    _where_clause = ""
+    print(f"GENERATE_TESTS_FOR_ALL_CANDIDATES = True \u2192 generating tests for ALL candidates")
 else:
-    print(f"Will generate technical tests for TOP {TOP_X} non-discarded candidates")
+    _where_clause = f"WHERE ranking.ranking_percentage >= {_min_pct}"
+    print(f"Generating tests only for candidates >= {_min_pct}%")
 
-# COMMAND ----------
-
-# DBTITLE 1,Get TOP X candidates for test generation
-# Step 4: Generate technical tests for top X candidates (excluding discarded)
-# TOP_X = 0 means all candidates; TOP_X > 0 limits to that number
-
-_limit_clause = f"LIMIT {TOP_X}" if TOP_X > 0 else ""
-
-top_candidates_with_tests_df_non_filtered = spark.sql(f"""
+top_candidates_with_tests_df = spark.sql(f"""
 SELECT
   ranking.*,
   from_json(
     ai_query(
       '{config.AI_MODEL}',
       CONCAT(
-        'You are a senior technical interviewer at Mercedes-Benz creating a screening test for a ', ranking.role, ' position at ', ranking.seniority, ' level.
+        'You are a senior technical interviewer creating a screening test for a ', ranking.role, ' position at ', ranking.seniority, ' level.
 
 The job description requires:
 ', job_desc, '
@@ -193,7 +135,10 @@ Create exactly 3 realistic technical scenarios to evaluate this candidate. Each 
 - Include a concrete example with specific data/numbers
 - End with a challenging question
 
-Candidate technologies: ', array_join(ranking.key_technologies, ', '), '
+IMPORTANT — Technology-agnostic scenarios:
+- Do NOT mention specific vendor products or tools by name (e.g. AWS, Azure, Spark, Kafka, Kubernetes)
+- Use generic technology categories instead (e.g. "cloud platform", "stream processing engine", "ETL pipeline", "container orchestration", "distributed compute framework", "message broker", "data warehouse")
+- The scenarios must test the candidate reasoning and problem-solving ability, not their knowledge of a specific product
 
 Return ONLY a valid JSON object with this structure:
 {{{{
@@ -220,7 +165,7 @@ FROM (
       ai_query(
         '{config.AI_MODEL}',
         CONCAT(
-          'Evaluate this CV against the JOB DESCRIPTION. Return JSON with: name, ranking_percentage (0-100 match for this role), report_summary, role, seniority (Junior/Mid/Senior/Lead/Principal), years_of_experience, key_technologies (array), cv_highlights (array), gaps (array vs job description), discarded (boolean: true if missing MANDATORY skills like Spark/SQL/Python for a Data Engineer), discarded_reason (string or null).\n\n=== JOB DESCRIPTION ===\n',
+          'Evaluate this CV against the JOB DESCRIPTION. Return JSON with: name, ranking_percentage (0-100 match), report_summary, role, seniority (Junior/Mid/Senior/Lead/Principal), years_of_experience, key_technologies (array), cv_highlights (array), gaps (array), discarded (always false), discarded_reason (always null).\n\n=== JOB DESCRIPTION ===\n',
           rd.full_text,
           '\n\n=== CANDIDATE CV ===\n',
           cv.full_text
@@ -234,163 +179,67 @@ FROM (
   FROM cv_texts cv
   CROSS JOIN role_description rd
 ) all_ranked
+{_where_clause}
 ORDER BY ranking.ranking_percentage DESC
-{_limit_clause}
 """)
 
-_label = f"Top {TOP_X}" if TOP_X > 0 else "All"
-print(f"{_label} candidates with technical tests:")
-display(top_candidates_with_tests_df_non_filtered)
-
-top_candidates_with_tests_df = top_candidates_with_tests_df_non_filtered.filter("discarded = false")
+print(f"Candidates with technical tests generated:")
+display(top_candidates_with_tests_df)
+print(f"\n{top_candidates_with_tests_df.count()} candidate(s) qualify for technical tests")
 
 # COMMAND ----------
 
-# DBTITLE 1,Install PDF generation library
+# DBTITLE 1,Install reportlab
 # MAGIC %pip install reportlab --quiet
 
 # COMMAND ----------
 
-# DBTITLE 1,Generate PDF technical tests for each candidate
-# Step 5: Generate PDF technical tests for each top candidate
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import cm, mm
-from reportlab.lib.colors import HexColor
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
-from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_JUSTIFY
-import os
+# DBTITLE 1,Generate PDF reports
+# ── Generate PDF reports ─────────────────────────────────────────
+# Re-import config and utils after pip install
+import sys, os
+_nb_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+_project_dir = f"/Workspace{os.path.dirname(_nb_path)}"
+if _project_dir not in sys.path:
+    sys.path.insert(0, _project_dir)
+for _m in [m for m in sys.modules if m == "config" or m.startswith("utils")]:
+    del sys.modules[_m]
+import config
+
+from utils.pdf_reports import build_technical_test_pdf, build_ranking_report_pdf
 
 OUTPUT_PATH = config.TECHNICAL_TESTS_OUTPUT_PATH
-LOGO_PATH = config.LOGO_PATH
 os.makedirs(OUTPUT_PATH, exist_ok=True)
 
-# Custom styles
-styles = getSampleStyleSheet()
-
-title_style = ParagraphStyle(
-    'MainTitle', parent=styles['Heading1'],
-    fontSize=18, fontName='Helvetica-Bold', spaceAfter=12, textColor=HexColor('#000000')
-)
-instructions_style = ParagraphStyle(
-    'InstructionsStyle', parent=styles['Normal'],
-    fontSize=10, fontName='Helvetica-Oblique', spaceAfter=16, leading=14
-)
-scenario_title_style = ParagraphStyle(
-    'ScenarioTitleStyle', parent=styles['Heading2'],
-    fontSize=12, fontName='Helvetica-Bold', spaceBefore=16, spaceAfter=8, textColor=HexColor('#1a1a1a')
-)
-body_style = ParagraphStyle(
-    'BodyStyle', parent=styles['Normal'],
-    fontSize=10, fontName='Helvetica', alignment=TA_JUSTIFY, spaceAfter=8, leading=14
-)
-example_style = ParagraphStyle(
-    'ExampleStyle', parent=styles['Normal'],
-    fontSize=10, fontName='Helvetica-Oblique', textColor=HexColor('#D4A017'), spaceAfter=8, leading=14
-)
-question_style = ParagraphStyle(
-    'QuestionStyle', parent=styles['Normal'],
-    fontSize=10, fontName='Helvetica-Bold', spaceAfter=16, leading=14
-)
-
-def create_technical_test_pdf(candidate_data, output_path):
-    """Generate a professional PDF technical test for a candidate."""
-    name = candidate_data['name']
-    role = candidate_data['role']
-    seniority = candidate_data['seniority']
-    test_data = candidate_data['technical_test']
-
-    safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).strip()
-    filename = f"{output_path}/Technical_Test_{safe_name}.pdf"
-
-    doc = SimpleDocTemplate(
-        filename, pagesize=A4,
-        rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm
-    )
-    usable_width = doc.width
-    story = []
-
-    # --- Header: logo only, top-right ---
-    logo_img = Image(LOGO_PATH, width=4*cm, height=4*cm, kind='proportional')
-    header_table = Table(
-        [[logo_img]],
-        colWidths=[usable_width]
-    )
-    header_table.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (0, 0), 'RIGHT'),
-        ('VALIGN', (0, 0), (0, 0), 'TOP'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 0),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-        ('TOPPADDING', (0, 0), (-1, -1), 0),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
-    ]))
-    story.append(header_table)
-    story.append(Spacer(1, 0.5*cm))
-
-    # --- Title ---
-    test_title = test_data.get('test_title', f"{role} Screening Test") if test_data else f"{role} Screening Test"
-    story.append(Paragraph(test_title, title_style))
-
-    # --- Instructions ---
-    instructions = test_data.get('instructions', '') if test_data else ''
-    if instructions:
-        story.append(Paragraph(f"<b>Instructions for candidates:</b> {instructions}", instructions_style))
-    else:
-        story.append(Paragraph(
-            "<b>Instructions for candidates:</b> - Answer each scenario with concise bullet points (max ~10 lines per scenario). "
-            "- Use simple, practical language. Focus on actionable reasoning. "
-            "- Advanced terminology is not required; explaining ideas clearly is more important.",
-            instructions_style
-        ))
-    story.append(Spacer(1, 0.3*cm))
-
-    # --- Scenarios ---
-    scenarios = test_data.get('scenarios', []) if test_data else []
-    for i, scenario in enumerate(scenarios, 1):
-        if hasattr(scenario, 'asDict'):
-            scenario = scenario.asDict()
-        scenario_num = scenario.get('number', i)
-        scenario_title = scenario.get('title', f'Technical Scenario {i}')
-        story.append(Paragraph(f"Scenario {scenario_num} \u2014 {scenario_title}", scenario_title_style))
-        description = scenario.get('description', '')
-        if description:
-            story.append(Paragraph(description, body_style))
-        example = scenario.get('example', '')
-        if example:
-            story.append(Paragraph(f"<b>Example:</b> {example}", example_style))
-        question = scenario.get('question', '')
-        if question:
-            story.append(Paragraph(f"<b>Question:</b> {question}", question_style))
-        story.append(Spacer(1, 0.3*cm))
-
-    doc.build(story)
-    return filename
-
-# --- Process each top candidate ---
+# ── Technical test PDFs ──────────────────────────────────────────
+generated = []
 candidates = top_candidates_with_tests_df.collect()
-generated_files = []
 
 for row in candidates:
-    candidate_data = row.asDict()
-    if candidate_data.get('technical_test'):
-        test_struct = candidate_data['technical_test']
-        if hasattr(test_struct, 'asDict'):
-            candidate_data['technical_test'] = test_struct.asDict()
+    cd = row.asDict()
+    if cd.get("technical_test") and hasattr(cd["technical_test"], "asDict"):
+        cd["technical_test"] = cd["technical_test"].asDict()
     try:
-        pdf_path = create_technical_test_pdf(candidate_data, OUTPUT_PATH)
-        generated_files.append({
-            'candidate': candidate_data['name'],
-            'role': candidate_data['role'],
-            'seniority': candidate_data['seniority'],
-            'ranking': candidate_data['ranking_percentage'],
-            'pdf_path': pdf_path
-        })
-        print(f"\u2713 Generated: {pdf_path}")
+        pdf = build_technical_test_pdf(cd, OUTPUT_PATH, config.LOGO_PATH)
+        generated.append(cd["name"])
+        print(f"\u2713 {pdf}")
     except Exception as e:
-        print(f"\u2717 Error generating PDF for {candidate_data.get('name', 'Unknown')}: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"\u2717 {cd.get('name', '?')}: {e}")
+        import traceback; traceback.print_exc()
 
 print(f"\n{'='*60}")
-print(f"Successfully generated {len(generated_files)} technical test PDFs")
-print(f"Output directory: {OUTPUT_PATH}")
+print(f"Generated {len(generated)} technical test PDF(s) \u2192 {OUTPUT_PATH}")
+
+# ── Ranking report PDF ───────────────────────────────────────────
+REPORT_PATH = config.EVALUATION_REPORTS_OUTPUT_PATH
+os.makedirs(REPORT_PATH, exist_ok=True)
+
+# Names of candidates who got technical tests (for the badge in the report)
+_tested_names = set(generated)
+
+report = build_ranking_report_pdf(
+    ranking_rows, REPORT_PATH, config.LOGO_PATH,
+    min_threshold=config.MIN_MATCH_THRESHOLD,
+    tested_names=_tested_names,
+)
+print(f"\u2713 Ranking report \u2192 {report}")
