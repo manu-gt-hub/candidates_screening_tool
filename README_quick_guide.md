@@ -15,17 +15,39 @@ python build_setup.py
 This creates all directories under `resources/` and copies `config.py.example` → `config.py`.  
 Adjust `config.py` if needed (AI model, thresholds, logo path).  
 
-#### *All noteboks must be executed in serverless mode  
-  
+---
+
+## 2. Choose Your Execution Mode
+
+The pipeline supports two execution modes, controlled by `ENVIRONMENT` in `config.py`:
+
+| Value | Mode | How to run |
+|---|---|---|
+| `"AUTO"` (default) | Auto-detect: Databricks if runtime present, otherwise local | — |
+| `"DBX"` | Force **Databricks** | Run notebooks on serverless compute |
+| `"LOCAL"` | Force **Local** | `python run_local.py scenarios` |
+
+**Databricks mode** uses Spark SQL + `ai_query` (Foundation Model API).  
+**Local mode** uses any OpenAI-compatible API — set `API_KEY` and `LOCAL_AI_MODEL` in `config.py`.
 
 ---
 
-## 2. Generate Technical Tests
+## 3. Generate Technical Tests
 
 1. Place the **job description** in `resources/job_description/job_description.txt`
-2. Place the **company logo** (PNG) in `resources/images/`
+2. Place the **company logo** (PNG) in `resources/images/` *(optional)*
 3. Drop candidate **CV PDFs** into `resources/cvs_landing/`
-4. Run the notebook **`tech_scenarios_creator`** (all cells, top to bottom)
+
+**Databricks:**
+```
+Run notebook tech_scenarios_creator (all cells, top to bottom, serverless mode)
+```
+
+**Local:**
+```bash
+pip install openai pdfplumber reportlab
+python run_local.py scenarios
+```
 
 **Outputs:**
 
@@ -39,11 +61,20 @@ Technical tests are only generated for candidates above the configured threshold
 
 ---
 
-## 3. Evaluate Candidate Responses
+## 4. Evaluate Candidate Responses
 
 1. Send the generated test PDFs to candidates
 2. Once they respond, drop their **response PDFs** into `resources/technical_responses/landing/`
-3. Run the notebook **`tech_responses_evaluator`** (all cells, top to bottom)
+
+**Databricks:**
+```
+Run notebook tech_responses_evaluator (all cells, top to bottom, serverless mode)
+```
+
+**Local:**
+```bash
+python run_local.py evaluate
+```
 
 **Outputs:**
 
@@ -58,20 +89,42 @@ Each report includes a match score, hire recommendation, per-scenario feedback, 
 ## Folder Structure (reference)
 
 ```
-resources/
-├── cvs_landing/                    ← Input: candidate CVs (PDF)
-├── job_description/                ← Input: job_description.txt
-├── images/                         ← Input: company logo (PNG)
-├── technical_tests/                → Output: technical test PDFs
-├── report_analysis/                → Output: ranking report PDF
-└── technical_responses/
-    ├── landing/                    ← Input: candidate response PDFs
-    └── analysis/                   → Output: evaluation report PDFs
+candidates_manager_dbx/
+├── config.py.example                    # Configuration template
+├── config.py                            # Local config (gitignored)
+├── build_setup.py                       # Bootstrap script
+├── run_local.py                         # Local runner (no Spark needed)
+├── README.md / README_quick_guide.md
+├── tech_scenarios_creator               # Notebook 1: CV ranking + test generation
+├── tech_responses_evaluator             # Notebook 2: Response evaluation
+├── utils/
+│   ├── config_loader.py                 #   Config import + validation (Databricks)
+│   ├── llm_client.py                    #   LLM abstraction (DBX + LOCAL)
+│   ├── prompts.py                       #   Prompt templates
+│   ├── pipeline.py                      #   Core pipeline logic (for local mode)
+│   ├── pdf_parser.py                    #   PDF parsing
+│   ├── job_description.py               #   Job description loader
+│   └── pdf_reports.py                   #   PDF generation (reportlab)
+└── resources/                           # All input/output data (gitignored)
+    ├── cvs_landing/                     ← Input: candidate CVs (PDF)
+    ├── job_description/                 ← Input: job_description.txt
+    ├── images/                          ← Input: company logo (PNG)
+    ├── technical_tests/                 → Output: technical test PDFs
+    ├── report_analysis/                 → Output: ranking report PDF
+    └── technical_responses/
+        ├── landing/                     ← Input: candidate response PDFs
+        └── analysis/                    → Output: evaluation report PDFs
 ```
 
 ---
 
 ## Requirements
 
-* **Databricks Serverless** compute with Foundation Model API access
+**Databricks mode:**
+* Databricks Serverless compute with Foundation Model API access
 * `reportlab` (installed automatically via `%pip` in each notebook)
+
+**Local mode:**
+* Python 3.9+
+* `pip install openai pdfplumber reportlab`
+* An API key for an OpenAI-compatible provider (set `API_KEY` in `config.py`)
