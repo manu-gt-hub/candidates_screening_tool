@@ -18,6 +18,7 @@ technical_tests/
 ├── create_jobs.py                     # Script to create scheduled Databricks Jobs
 ├── .gitignore
 ├── README.md
+├── README_quick_guide.md              # Quick-start guide
 ├── tech_scenarios_creator              # Notebook 1: CV ranking + test generation
 ├── tech_responses_evaluator            # Notebook 2: Technical response evaluation
 ├── utils/                             # Shared utility modules
@@ -132,7 +133,7 @@ Both notebooks require **Databricks Serverless** compute with:
 ```
 [CV PDFs] → Python read → ai_parse_document → [Extracted text]
                                                      ↓
-[Job description] ───────────────────→ ai_query → [Ranking + evaluation]
+[Job description] ─────────────────────→ ai_query → [Ranking + evaluation]
                                                      ↓
                                      ┌──────────────────┴──────────────────┐
                                      ↓                                    ↓
@@ -148,12 +149,12 @@ Both notebooks require **Databricks Serverless** compute with:
 
 | # | Cell | Description |
 |---|---|---|
-| 1 | **Setup & Configuration** | Imports config via `utils.config_loader`, validates all required variables and paths |
-| 2 | **Parse candidate CVs** | Uses `utils.pdf_parser` to read and parse all PDFs into a Spark temp view |
-| 3 | **Load job description** | Uses `utils.job_description` to load from local file |
-| 4 | **Rank candidates with AI** | Evaluates each CV via `ai_query`, assigns match percentage and metadata |
-| 5 | **Generate technical tests with AI** | For eligible candidates (see filtering below), generates 3 scenarios via `ai_query` |
-| 6 | **Install reportlab** | `%pip install reportlab` |
+| 1 | **Install reportlab** | `%pip install reportlab` |
+| 2 | **Setup & Configuration** | Imports config via `utils.config_loader`, validates all required variables and paths |
+| 3 | **Parse candidate CVs** | Uses `utils.pdf_parser` to read and parse all PDFs into a Spark temp view |
+| 4 | **Load job description** | Uses `utils.job_description` to load from local file |
+| 5 | **Rank candidates with AI** | Evaluates each CV via `ai_query`, assigns match percentage and metadata |
+| 6 | **Generate technical tests with AI** | For eligible candidates (see filtering below), generates 3 scenarios via `ai_query` |
 | 7 | **Generate PDF reports** | Uses `utils.pdf_reports` to create technical test PDFs + ranking report in one cell |
 
 ### Candidate filtering for technical tests
@@ -196,42 +197,21 @@ Both notebooks require **Databricks Serverless** compute with:
 
 ## AI Functions Used
 
-| Function | Purpose |
+| Function | Used in | Purpose |
+|---|---|---|
+| `ai_query` | Both notebooks | LLM-based evaluation and generation: CV ranking, technical test creation, response evaluation |
+| `ai_parse_document` | `utils/pdf_parser.py` | PDF text extraction using the Document Intelligence API |
+
+Both functions require a Databricks Foundation Model API endpoint configured via `AI_MODEL` in `config.py`.
+
+---
+
+## Output PDF naming convention
+
+All generated PDF filenames include a timestamp (`DD_MM_YYYY_HH_MM`):
+
+| Report type | Filename pattern |
 |---|---|
-| `ai_parse_document` | Extracts structured text from PDF files (version 2.0) |
-| `ai_query` | Sends prompts to the configured LLM with structured JSON response format |
-
----
-
-## Output PDFs
-
-### Technical tests (Notebook 1 → `resources/technical_tests/`)
-- **One page per candidate** (compact layout with automatic content truncation)
-- Company logo in header (6 cm)
-- Test title, instructions, 3 technical scenarios
-- Each scenario: description, concrete example (amber), evaluation question (wine red)
-- Colour palette: navy title, teal scenario headings, slate instructions, dark grey body
-- Tailored to the candidate's seniority level and technologies
-
-### Candidate ranking report (Notebook 1 → `resources/report_analysis/`)
-- Single PDF: `Candidate_Ranking_Report_<date>.pdf`
-- All candidates sorted by match score (descending), with score, seniority, experience, summary, and key technologies
-- Colour-coded scores (green ≥ `MIN_MATCH_THRESHOLD`, amber ≥ 50%, red < 50%)
-
-### Evaluation reports (Notebook 2 → `resources/technical_responses/analysis/`)
-- One PDF per candidate: `Evaluation_Report_<Name>_<date>.pdf`
-- Colour-coded match score card with recommendation (Strong Hire / Hire / Lean Hire / Lean No Hire / No Hire)
-- Suitability assessment and key highlights
-- Per-scenario scores with feedback
-- Strengths, weaknesses, and improvement areas
-
----
-
-## Security Notes
-
-- `config.py` is excluded from version control via `.gitignore`
-- `resources/` is excluded from version control via `.gitignore` — it contains candidate data (CVs, responses), company assets (logo), and generated reports
-- No API keys, usernames, or sensitive paths in notebooks, scripts, or this README
-- All paths are resolved dynamically relative to the project directory
-- `create_jobs.py` resolves the current user at runtime via the Databricks SDK
-- **Important**: Clear notebook cell outputs before committing — they may contain internal paths or candidate names
+| Technical test | `Technical_Test_<Candidate Name>.pdf` |
+| Candidate ranking | `Candidate_Ranking_Report_DD_MM_YYYY_HH_MM.pdf` |
+| Evaluation report | `Evaluation_Report_<Candidate Name>_DD_MM_YYYY_HH_MM.pdf` |

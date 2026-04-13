@@ -39,7 +39,6 @@ _COMMON_ATTRS = [
 
 _SCENARIOS_CREATOR_ATTRS = _COMMON_ATTRS + [
     ("CVS_PATH", str),
-    ("LOGO_PATH", str),
     ("TECHNICAL_TESTS_OUTPUT_PATH", str),
     ("EVALUATION_REPORTS_OUTPUT_PATH", str),
     ("MIN_MATCH_THRESHOLD", (int, float)),
@@ -74,7 +73,7 @@ def validate_config(cfg, mode="scenarios"):
             errors.append(f"{attr} must be {expected_type}, got {type(val).__name__}")
 
     # Paths — warn if missing but do not block execution
-    path_attrs = ["CVS_PATH", "ROLE_DESCRIPTION_LOCAL_PATH", "LOGO_PATH"] if mode == "scenarios" \
+    path_attrs = ["CVS_PATH", "ROLE_DESCRIPTION_LOCAL_PATH"] if mode == "scenarios" \
         else ["TECHNICAL_RESPONSES_PATH", "ROLE_DESCRIPTION_LOCAL_PATH"]
     warnings = []
     for attr in path_attrs:

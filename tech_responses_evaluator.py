@@ -1,4 +1,9 @@
 # Databricks notebook source
+# DBTITLE 1,Install reportlab
+# MAGIC %pip install reportlab --quiet
+
+# COMMAND ----------
+
 # DBTITLE 1,Setup & Configuration
 # ── Setup & Configuration ────────────────────────────────────────
 import sys, os
@@ -106,11 +111,6 @@ display(spark.createDataFrame(evaluation_rows, evaluations_df.schema))
 print(f"\nEvaluated {len(evaluation_rows)} candidate(s):")
 for row in evaluation_rows:
     print(f"  {row['candidate_name']}: {row['match_percentage']:.0f}% - {row['overall_recommendation']}")
-
-# COMMAND ----------
-
-# DBTITLE 1,Install reportlab
-# MAGIC %pip install reportlab --quiet
 
 # COMMAND ----------
 

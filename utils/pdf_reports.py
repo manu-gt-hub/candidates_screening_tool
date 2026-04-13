@@ -3,7 +3,7 @@
 Requires ``reportlab`` — import this module only AFTER ``%pip install reportlab``.
 """
 import os
-from datetime import date
+from datetime import date, datetime
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -37,6 +37,28 @@ def _score_color(pct):
     elif pct >= 50:
         return "#F57F17"
     return "#C62828"
+
+
+def _timestamp():
+    """Return a filename-safe timestamp: DD_MM_YYYY_HH_MM."""
+    return datetime.now().strftime("%d_%m_%Y_%H_%M")
+
+
+def _logo_elements(logo_path, width, height, doc_width):
+    """Return story elements for the logo header, or empty list if logo is unavailable."""
+    if not logo_path or not os.path.isfile(logo_path):
+        return []
+    logo = Image(logo_path, width=width, height=height, kind="proportional")
+    ht = Table([[logo]], colWidths=[doc_width])
+    ht.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (0, 0), "RIGHT"),
+        ("VALIGN", (0, 0), (0, 0), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    return [ht, Spacer(1, 3 * mm)]
 
 
 # ======================================================================
@@ -84,7 +106,7 @@ def _get_test_styles():
     return _TEST_STYLES
 
 
-def build_technical_test_pdf(candidate_data, output_path, logo_path):
+def build_technical_test_pdf(candidate_data, output_path, logo_path=None):
     """Generate a one-page PDF technical test for a candidate.
 
     Returns:
@@ -103,19 +125,8 @@ def build_technical_test_pdf(candidate_data, output_path, logo_path):
     )
     story = []
 
-    # Header logo
-    logo = Image(logo_path, width=6 * cm, height=6 * cm, kind="proportional")
-    ht = Table([[logo]], colWidths=[doc.width])
-    ht.setStyle(TableStyle([
-        ("ALIGN", (0, 0), (0, 0), "RIGHT"),
-        ("VALIGN", (0, 0), (0, 0), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-        ("TOPPADDING", (0, 0), (-1, -1), 0),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-    ]))
-    story.append(ht)
-    story.append(Spacer(1, 3 * mm))
+    # Header logo (optional)
+    story.extend(_logo_elements(logo_path, 6 * cm, 6 * cm, doc.width))
 
     # Title
     test_title = test_data.get("test_title", f"{role} Screening Test")
@@ -127,8 +138,8 @@ def build_technical_test_pdf(candidate_data, output_path, logo_path):
         story.append(Paragraph(f"<b>Instructions:</b> {_truncate(instructions, 190)}", S["instructions"]))
     else:
         story.append(Paragraph(
-            "<b>Instructions:</b> Answer each scenario with concise bullet points (max \u223c10 lines). "
-            "Use simple, practical language. Focus on actionable reasoning.",
+            "<b>Instructions:</b> Answer each scenario clearly and concisely. "
+            "If you know specific technologies that apply, use them in your response to solve the proposed scenarios.",
             S["instructions"],
         ))
 
@@ -154,7 +165,7 @@ def build_technical_test_pdf(candidate_data, output_path, logo_path):
 #  2. Candidate Ranking Report  (single PDF \u2014 suggested ranking, no discards)
 # ======================================================================
 
-def build_ranking_report_pdf(ranking_rows, output_path, logo_path,
+def build_ranking_report_pdf(ranking_rows, output_path, logo_path=None,
                               min_threshold=70, tested_names=None):
     """Generate a ranking summary PDF with colour-coded tiers.
 
@@ -166,7 +177,7 @@ def build_ranking_report_pdf(ranking_rows, output_path, logo_path,
     Args:
         ranking_rows:  List of Row objects from the ranking query.
         output_path:   Directory for the output PDF.
-        logo_path:     Path to logo image.
+        logo_path:     Path to logo image (optional; omitted if None or file missing).
         min_threshold: Minimum match % considered \"recommended\" (default 70).
         tested_names:  Set of candidate names that received a technical test.
 
@@ -193,26 +204,18 @@ def build_ranking_report_pdf(ranking_rows, output_path, logo_path,
             return "#F57F17"
         return "#C62828"
 
-    report_file = os.path.join(output_path, f"Candidate_Ranking_Report_{date.today().strftime('%Y-%m-%d')}.pdf")
+    report_file = os.path.join(output_path, f"Candidate_Ranking_Report_{_timestamp()}.pdf")
     doc = SimpleDocTemplate(report_file, pagesize=A4,
                             rightMargin=1.5*cm, leftMargin=1.5*cm,
                             topMargin=1.5*cm, bottomMargin=1.5*cm)
     story = []
 
-    # Header — logo only
-    logo = Image(logo_path, width=2.5*cm, height=2.5*cm, kind="proportional")
-    ht = Table([[logo]], colWidths=[doc.width])
-    ht.setStyle(TableStyle([
-        ("ALIGN", (0, 0), (0, 0), "RIGHT"),
-        ("VALIGN", (0, 0), (0, 0), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-    ]))
-    story.append(ht)
-    story.append(Spacer(1, 3*mm))
+    # Header — logo (optional)
+    story.extend(_logo_elements(logo_path, 2.5 * cm, 2.5 * cm, doc.width))
+
     story.append(Paragraph("Candidate Ranking Report", S["title"]))
     story.append(Paragraph(
-        f"Generated on {date.today().strftime('%B %d, %Y')} \u2014 {len(ranking_rows)} candidate(s) evaluated",
+        f"Generated on {datetime.now().strftime('%B %d, %Y at %H:%M')} \u2014 {len(ranking_rows)} candidate(s) evaluated",
         S["subtitle"],
     ))
     story.append(HRFlowable(width="100%", thickness=1, color=HexColor("#cccccc")))
@@ -295,7 +298,7 @@ def build_evaluation_report_pdf(ev, output_path):
         return S["rec_neu"]
 
     name = ev.get("candidate_name", "Unknown")
-    fpath = os.path.join(output_path, f"Evaluation_Report_{_safe_name(name)}_{date.today().strftime('%Y-%m-%d')}.pdf")
+    fpath = os.path.join(output_path, f"Evaluation_Report_{_safe_name(name)}_{_timestamp()}.pdf")
     doc = SimpleDocTemplate(fpath, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
     story = []
 
