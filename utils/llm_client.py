@@ -93,12 +93,14 @@ def _query_local(prompt, config):
             "API_BASE_URL (or ENDPOINT) must be set in config.py for local mode"
         )
 
+    region = getattr(config, "BEDROCK_REGION", None) or "us-east-1"
+
     os.environ["AWS_BEARER_TOKEN_BEDROCK"] = api_key
 
     client = boto3.client(
         service_name="bedrock-runtime",
         endpoint_url=endpoint,
-        region_name="nexus",
+        region_name=region,
     )
 
     system_prompt = (

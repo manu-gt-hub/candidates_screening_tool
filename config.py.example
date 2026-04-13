@@ -36,8 +36,10 @@ AI_MODEL = "databricks-claude-opus-4-6"
 # ── AI model (Local — Bedrock-compatible gateway) ────────────────
 # API_KEY is set as AWS_BEARER_TOKEN_BEDROCK at runtime.
 # API_BASE_URL is the Bedrock-compatible endpoint.
+# BEDROCK_REGION is the region name passed to boto3 (e.g. "us-east-1").
 API_KEY = ""
 API_BASE_URL = ""
+BEDROCK_REGION = "us-east-1"
 LOCAL_AI_MODEL = "claude-opus-4.6"
 
 # ── Ranking & test generation parameters ─────────────────────────────
