@@ -1,8 +1,7 @@
-"""LLM client — unified interface for Databricks and local (OpenAI-compatible) backends.
+"""LLM client — unified interface for Databricks and local (Bedrock-compatible) backends.
 
-Both backends use the ``openai`` Python SDK:
-  - **DBX**: workspace Foundation Model API (auto-token from environment).
-  - **LOCAL**: any OpenAI-compatible endpoint (OpenAI, Anthropic, Ollama…).
+  - **DBX**: workspace Foundation Model API via ``openai`` SDK (auto-token from environment).
+  - **LOCAL**: AWS Bedrock-compatible endpoint via ``boto3``.
 """
 import json
 import os
@@ -31,31 +30,14 @@ def query_llm(prompt, config):
     Returns:
         dict parsed from the LLM JSON response.
     """
-    from openai import OpenAI
-
     env = _resolve_environment(config)
 
     if env == "DBX":
-        client, model = _databricks_client(config)
+        content = _query_databricks(prompt, config)
     else:
-        client, model = _local_client(config)
+        content = _query_local(prompt, config)
 
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are an expert assistant. "
-                    "Always respond with valid JSON only, no markdown fences."
-                ),
-            },
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0.3,
-    )
-
-    content = response.choices[0].message.content.strip()
+    content = content.strip()
 
     # Strip markdown code fences if the model wraps them anyway
     if content.startswith("```"):
@@ -70,6 +52,68 @@ def query_llm(prompt, config):
         parsed = parsed["result"]
 
     return parsed
+
+
+def _query_databricks(prompt, config):
+    """Send prompt via OpenAI SDK to Databricks Foundation Model API."""
+    from openai import OpenAI
+
+    client, model = _databricks_client(config)
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are an expert assistant. "
+                    "Always respond with valid JSON only, no markdown fences."
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.3,
+    )
+    return response.choices[0].message.content
+
+
+def _query_local(prompt, config):
+    """Send prompt via boto3 Bedrock converse API."""
+    import boto3
+
+    api_key = getattr(config, "API_KEY", None)
+    endpoint = getattr(config, "API_BASE_URL", None) or getattr(config, "ENDPOINT", None)
+    model = getattr(config, "LOCAL_AI_MODEL", None) or config.AI_MODEL
+
+    if not api_key:
+        raise ValueError(
+            "API_KEY must be set in config.py for local mode"
+        )
+    if not endpoint:
+        raise ValueError(
+            "API_BASE_URL (or ENDPOINT) must be set in config.py for local mode"
+        )
+
+    region = getattr(config, "BEDROCK_REGION", None) or "us-east-1"
+
+    os.environ["AWS_BEARER_TOKEN_BEDROCK"] = api_key
+
+    client = boto3.client(
+        service_name="bedrock-runtime",
+        endpoint_url=endpoint,
+        region_name=region,
+    )
+
+    system_prompt = (
+        "You are an expert assistant. "
+        "Always respond with valid JSON only, no markdown fences."
+    )
+
+    response = client.converse(
+        modelId=model,
+        system=[{"text": system_prompt}],
+        messages=[{"role": "user", "content": [{"text": prompt}]}],
+    )
+    return response["output"]["message"]["content"][0]["text"]
 
 
 # ── Databricks backend ───────────────────────────────────────────
@@ -111,19 +155,3 @@ def _get_host():
     raise RuntimeError("Cannot determine Databricks workspace URL")
 
 
-# ── Local backend ────────────────────────────────────────────────
-
-def _local_client(config):
-    from openai import OpenAI
-
-    api_key = getattr(config, "API_KEY", None) or os.environ.get("OPENAI_API_KEY")
-    api_base = getattr(config, "API_BASE_URL", None) or "https://api.openai.com/v1"
-    model = getattr(config, "LOCAL_AI_MODEL", None) or config.AI_MODEL
-
-    if not api_key:
-        raise ValueError(
-            "API_KEY must be set in config.py or OPENAI_API_KEY env var for local mode"
-        )
-
-    client = OpenAI(api_key=api_key, base_url=api_base)
-    return client, model
