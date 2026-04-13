@@ -4,6 +4,9 @@ config.py
 # Resources folder (candidate CVs, job descriptions, logos, generated PDFs)
 resources/
 
+# Windsurf IDE
+.windsurf/
+
 # Python
 __pycache__/
 *.pyc

@@ -1,7 +1,9 @@
-"""Shared configuration for CV Ranking and Technical Response Evaluator notebooks.
+"""Shared configuration for CV Ranking and Technical Response Evaluator.
+
+Works in both Databricks (notebooks) and local (run_local.py) modes.
 
 Usage:
-  1. Copy this file as config.py in the same directory as the notebooks
+  1. Copy this file as config.py in the same directory
   2. Fill in the values below with your environment-specific settings
   3. config.py is excluded from version control via .gitignore
 """
@@ -22,8 +24,21 @@ TECHNICAL_TESTS_OUTPUT_PATH = os.path.join(RESOURCES_BASE, "technical_tests")
 EVALUATION_REPORTS_OUTPUT_PATH = os.path.join(RESOURCES_BASE, "report_analysis")
 TECHNICAL_ANSWERS_ANALYSIS_PATH = os.path.join(RESOURCES_BASE, "technical_responses", "analysis")
 
-# ── AI model ─────────────────────────────────────────────────────────
+# ── Environment ──────────────────────────────────────────────────────
+#   "AUTO" → auto-detect (Databricks runtime present → DBX, otherwise → LOCAL)
+#   "DBX"  → force Databricks mode  (notebooks + Spark SQL + ai_query)
+#   "LOCAL" → force local mode       (run_local.py + OpenAI-compatible REST API)
+ENVIRONMENT = "AUTO"
+
+# ── AI model (Databricks / DBX) ──────────────────────────────────────
 AI_MODEL = "databricks-claude-opus-4-6"
+
+# ── AI model (Local — Bedrock-compatible gateway) ────────────────
+# API_KEY is set as AWS_BEARER_TOKEN_BEDROCK at runtime.
+# API_BASE_URL is the Bedrock-compatible endpoint.
+API_KEY = ""
+API_BASE_URL = ""
+LOCAL_AI_MODEL = "claude-opus-4.6"
 
 # ── Ranking & test generation parameters ─────────────────────────────
 # MIN_MATCH_THRESHOLD: minimum match % to generate a technical test.
@@ -33,4 +48,4 @@ MIN_MATCH_THRESHOLD = 70
 
 # GENERATE_TESTS_FOR_ALL_CANDIDATES: when True, generate technical tests for ALL
 # candidates regardless of their match %.
-GENERATE_TESTS_FOR_ALL_CANDIDATES = False
+GENERATE_TESTS_FOR_ALL_CANDIDATES = True
