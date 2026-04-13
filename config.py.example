@@ -33,14 +33,14 @@ ENVIRONMENT = "AUTO"
 # ── AI model (Databricks / DBX) ──────────────────────────────────────
 AI_MODEL = "databricks-claude-opus-4-6"
 
-# ── AI model (Local) ─────────────────────────────────────────────────
-# Set API_KEY here or export the OPENAI_API_KEY environment variable.
-# API_BASE_URL defaults to OpenAI; change it for Anthropic, Ollama, etc.
+# ── AI model (Local — Bedrock-compatible gateway) ────────────────
+# API_KEY is set as AWS_BEARER_TOKEN_BEDROCK at runtime.
+# API_BASE_URL is the Bedrock-compatible endpoint.
+# BEDROCK_REGION is the region name passed to boto3 (e.g. "us-east-1").
 API_KEY = ""
-API_BASE_URL = "https://api.openai.com/v1"          # OpenAI (default)
-# API_BASE_URL = "https://api.anthropic.com/v1"      # Anthropic
-# API_BASE_URL = "http://localhost:11434/v1"          # Ollama (local)
-LOCAL_AI_MODEL = "gpt-4o"
+API_BASE_URL = ""
+BEDROCK_REGION = "us-east-1"
+LOCAL_AI_MODEL = "claude-opus-4.6"
 
 # ── Ranking & test generation parameters ─────────────────────────────
 # MIN_MATCH_THRESHOLD: minimum match % to generate a technical test.

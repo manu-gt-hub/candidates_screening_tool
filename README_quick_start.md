@@ -28,7 +28,7 @@ The pipeline supports two execution modes, controlled by `ENVIRONMENT` in `confi
 | `"LOCAL"` | Force **Local** | `python run_local.py scenarios` |
 
 **Databricks mode** uses Spark SQL + `ai_query` (Foundation Model API).  
-**Local mode** uses any OpenAI-compatible API — set `API_KEY` and `LOCAL_AI_MODEL` in `config.py`.
+**Local mode** uses AWS Bedrock-compatible API via `boto3` — set `API_KEY`, `API_BASE_URL`, and `LOCAL_AI_MODEL` in `config.py`.
 
 ---
 
@@ -45,7 +45,7 @@ Run notebook tech_scenarios_creator (all cells, top to bottom, serverless mode)
 
 **Local:**
 ```bash
-pip install openai pdfplumber reportlab
+pip install boto3 pdfplumber reportlab
 python run_local.py scenarios
 ```
 
@@ -126,5 +126,5 @@ candidates_manager_dbx/
 
 **Local mode:**
 * Python 3.9+
-* `pip install openai pdfplumber reportlab`
-* An API key for an OpenAI-compatible provider (set `API_KEY` in `config.py`)
+* `pip install boto3 pdfplumber reportlab`
+* An API key for a Bedrock-compatible provider (set `API_KEY` in `config.py`)

@@ -7,7 +7,7 @@ Usage:
     python run_local.py all         # Run both
 
 Prerequisites (pip install):
-    openai pdfplumber reportlab
+    boto3 pdfplumber reportlab
 """
 import sys
 import os

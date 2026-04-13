@@ -1,6 +1,6 @@
 # CV Screening & Technical Evaluation Pipeline
 
-Automated pipeline for screening candidate CVs, generating tailored technical tests, and evaluating candidate responses — powered by AI (Databricks or any OpenAI-compatible provider).
+Automated pipeline for screening candidate CVs, generating tailored technical tests, and evaluating candidate responses — powered by AI (Databricks or AWS Bedrock-compatible provider).
 
 > **⚠️ Disclaimer**: This pipeline uses AI models to parse, evaluate, and generate content. AI outputs may contain errors, inaccuracies, or biases. All rankings, evaluations, technical tests, and reports **require human review** before being used in any hiring decision. This tool is designed to assist — not replace — human judgement in the recruitment process.
 
@@ -13,7 +13,7 @@ The pipeline supports **two execution modes**:
 | Mode | Backend | Entry point | PDF parsing |
 |---|---|---|---|
 | **DBX** (Databricks) | `ai_query` via Spark SQL | Notebooks on serverless compute | `ai_parse_document` |
-| **LOCAL** | OpenAI-compatible REST API | `python run_local.py` | `pdfplumber` |
+| **LOCAL** | AWS Bedrock-compatible API (`boto3`) | `python run_local.py` | `pdfplumber` |
 
 Controlled by `ENVIRONMENT` in `config.py` (`AUTO` / `DBX` / `LOCAL`).
 
@@ -32,7 +32,7 @@ candidates_manager_dbx/
 ├── utils/                               # Shared utility modules
 │   ├── __init__.py
 │   ├── config_loader.py                 #   Config import + validation (Databricks)
-│   ├── llm_client.py                    #   LLM abstraction (DBX + LOCAL via OpenAI SDK)
+│   ├── llm_client.py                    #   LLM abstraction (DBX via OpenAI SDK + LOCAL via boto3 Bedrock)
 │   ├── prompts.py                       #   Prompt templates (ranking, tests, evaluation)
 │   ├── pipeline.py                      #   Core pipeline logic (for run_local.py)
 │   ├── pdf_parser.py                    #   PDF parsing with ai_parse_document (DBX)
@@ -117,9 +117,9 @@ Edit `config.py`:
 |---|---|
 | `ENVIRONMENT` | `"AUTO"` (detect), `"DBX"` (force Databricks), or `"LOCAL"` (force local) |
 | `AI_MODEL` | Databricks Foundation Model API endpoint (e.g. `databricks-claude-opus-4-6`) |
-| `API_KEY` | API key for local mode (or set `OPENAI_API_KEY` env var) |
-| `API_BASE_URL` | Provider base URL — OpenAI, Anthropic, Ollama, etc. (default: OpenAI) |
-| `LOCAL_AI_MODEL` | Model name for local mode (e.g. `gpt-4o`, `claude-sonnet-4-20250514`) |
+| `API_KEY` | API key for local mode (set as `AWS_BEARER_TOKEN_BEDROCK` at runtime) |
+| `API_BASE_URL` | Bedrock-compatible endpoint URL |
+| `LOCAL_AI_MODEL` | Model name for local mode (e.g. `claude-opus-4.6`) |
 
 All paths are resolved **relative to `config.py`** using `os.path`, so the project works for any user without hardcoded paths.
 
@@ -131,8 +131,8 @@ All paths are resolved **relative to `config.py`** using `os.path`, so the proje
 
 **Local mode:**
 - Python 3.9+
-- `pip install openai pdfplumber reportlab`
-- An API key for an OpenAI-compatible provider
+- `pip install boto3 pdfplumber reportlab`
+- An API key for a Bedrock-compatible provider
 
 ### 4. Job orchestration (optional, Databricks only)
 
@@ -220,9 +220,9 @@ All paths are resolved **relative to `config.py`** using `os.path`, so the proje
 ### Quick start
 
 ```bash
-pip install openai pdfplumber reportlab
+pip install boto3 pdfplumber reportlab
 cp config.py.example config.py
-# Edit config.py: set ENVIRONMENT="LOCAL", API_KEY, LOCAL_AI_MODEL
+# Edit config.py: set API_KEY, API_BASE_URL, LOCAL_AI_MODEL
 python run_local.py scenarios   # rank CVs + generate tests
 python run_local.py evaluate    # evaluate responses
 python run_local.py all         # run both
@@ -234,13 +234,13 @@ python run_local.py all         # run both
 run_local.py
   └→ utils/pipeline.py      (core logic: parse, rank, test, evaluate)
        ├→ utils/prompts.py   (prompt templates)
-       └→ utils/llm_client.py (OpenAI SDK → any provider)
+       └→ utils/llm_client.py (boto3 Bedrock)
   └→ utils/pdf_reports.py   (PDF generation — shared with notebooks)
 ```
 
-`llm_client.py` uses the `openai` Python SDK for both modes:
-- **DBX**: auto-retrieves workspace token + host, calls the Foundation Model API
-- **LOCAL**: uses `API_KEY` + `API_BASE_URL` + `LOCAL_AI_MODEL` from `config.py`
+`llm_client.py` supports two backends:
+- **DBX**: `openai` SDK — auto-retrieves workspace token + host, calls the Foundation Model API
+- **LOCAL**: `boto3` Bedrock `converse` API — uses `API_KEY` + `API_BASE_URL` + `LOCAL_AI_MODEL` from `config.py`
 
 ### Candidate filtering
 
@@ -258,7 +258,7 @@ run_local.py
 |---|---|---|
 | **DBX notebooks** | `ai_query` (Spark SQL) | LLM-based evaluation and generation |
 | **DBX notebooks** | `ai_parse_document` (Spark SQL) | PDF text extraction |
-| **Local mode** | `openai` Python SDK | LLM calls to any OpenAI-compatible API |
+| **Local mode** | `boto3` Bedrock `converse` API | LLM calls to Bedrock-compatible gateway |
 | **Local mode** | `pdfplumber` | PDF text extraction |
 
 ---
