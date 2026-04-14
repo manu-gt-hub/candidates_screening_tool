@@ -42,6 +42,13 @@ API_BASE_URL = ""
 BEDROCK_REGION = "us-east-1"
 LOCAL_AI_MODEL = "claude-opus-4.6"
 
+# ── Technical context for scenario generation ─────────────────────────
+# Short description of the business domain / area.  This is injected into
+# the technical-test prompt so scenarios are contextualised.
+# Examples: "car after-sales area", "car presales", "financial services",
+#           "e-commerce logistics", "healthcare data platform"
+TECHNICAL_CONTEXT = ""
+
 # ── Ranking & test generation parameters ─────────────────────────────
 # MIN_MATCH_THRESHOLD: minimum match % to generate a technical test.
 # Also sets the colour tier boundary in the ranking report (green >= this).

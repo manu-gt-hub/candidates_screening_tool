@@ -69,9 +69,8 @@ Return ONLY a valid JSON object with exactly these fields:
 - name (string): Full name of the candidate
 - ranking_percentage (number): Score 0-100 representing how well the candidate matches the JOB DESCRIPTION
 - report_summary (string): 2-3 sentences evaluating the candidate FIT for this specific role
-- role (string): The role title from the job description
-- seniority (string): The candidate''s actual seniority level based on their professional experience. One of "Junior", "Mid", "Senior", "Lead", "Principal"
-- jd_seniority (string): The seniority level REQUIRED by the JOB DESCRIPTION (not the candidate''s level). One of "Junior", "Mid", "Senior", "Lead", "Principal"
+- candidate_role (string): The candidate''s current or most recent role title extracted from the CV
+- candidate_seniority (string): The candidate''s actual seniority level based on their professional experience. One of "Junior", "Mid", "Senior", "Lead", "Principal"
 - years_of_experience (integer): Estimated total years of professional experience
 - key_technologies (array of strings): All technologies mentioned in the CV
 - cv_highlights (array of strings): 3-5 most impressive achievements RELEVANT to this job
@@ -88,9 +87,9 @@ Return ONLY a valid JSON object with exactly these fields:
 ',
           cv.full_text
         ),
-        responseFormat => 'STRUCT<result:STRUCT<name:STRING, ranking_percentage:DOUBLE, report_summary:STRING, role:STRING, seniority:STRING, jd_seniority:STRING, years_of_experience:INT, key_technologies:ARRAY<STRING>, cv_highlights:ARRAY<STRING>, gaps:ARRAY<STRING>, discarded:BOOLEAN, discarded_reason:STRING>>'
+        responseFormat => 'STRUCT<result:STRUCT<name:STRING, ranking_percentage:DOUBLE, report_summary:STRING, candidate_role:STRING, candidate_seniority:STRING, years_of_experience:INT, key_technologies:ARRAY<STRING>, cv_highlights:ARRAY<STRING>, gaps:ARRAY<STRING>, discarded:BOOLEAN, discarded_reason:STRING>>'
       ),
-      'name STRING, ranking_percentage DOUBLE, report_summary STRING, role STRING, seniority STRING, jd_seniority STRING, years_of_experience INT, key_technologies ARRAY<STRING>, cv_highlights ARRAY<STRING>, gaps ARRAY<STRING>, discarded BOOLEAN, discarded_reason STRING'
+      'name STRING, ranking_percentage DOUBLE, report_summary STRING, candidate_role STRING, candidate_seniority STRING, years_of_experience INT, key_technologies ARRAY<STRING>, cv_highlights ARRAY<STRING>, gaps ARRAY<STRING>, discarded BOOLEAN, discarded_reason STRING'
     ) AS parsed_result,
     cv.path AS source_file
   FROM cv_texts cv
@@ -114,6 +113,7 @@ ranking_df.createOrReplaceTempView("candidate_rankings")
 
 _min_pct = config.MIN_MATCH_THRESHOLD
 _gen_all = config.GENERATE_TESTS_FOR_ALL_CANDIDATES
+_tech_ctx = getattr(config, "TECHNICAL_CONTEXT", "") or ""
 
 if _gen_all:
     _where_clause = ""
@@ -122,6 +122,10 @@ else:
     _where_clause = f"WHERE ranking.ranking_percentage >= {_min_pct}"
     print(f"Generating tests only for candidates >= {_min_pct}%")
 
+_ctx_sql = ""
+if _tech_ctx:
+    _ctx_sql = f"\nBUSINESS CONTEXT: The role is within the {_tech_ctx} domain. Scenarios MUST be set in this specific business context.\n"
+
 top_candidates_with_tests_df = spark.sql(f"""
 SELECT
   ranking.*,
@@ -129,14 +133,19 @@ SELECT
     ai_query(
       '{config.AI_MODEL}',
       CONCAT(
-        'You are a senior technical interviewer creating a screening test for a ', ranking.role, ' position at ', ranking.jd_seniority, ' level.
-
+        'You are a senior technical interviewer creating a screening test for a ', ranking.candidate_role, ' position at ', ranking.candidate_seniority, ' level.
+{_ctx_sql}
 The job description requires:
 ', rd.full_text, '
 
+CANDIDATE PROFILE (use this to tailor scenarios to the candidate''s specific background - each candidate must receive UNIQUE scenarios):
+Technologies: ', array_join(ranking.key_technologies, ', '), '
+Highlights: ', array_join(ranking.cv_highlights, '; '), '
+
 Create exactly 3 realistic technical scenarios to evaluate this candidate. Each scenario should:
-- Be appropriate for the seniority level required by the JOB DESCRIPTION (', ranking.jd_seniority, ')
+- Be appropriate for the candidate''s seniority level (', ranking.candidate_seniority, ')
 - Test skills relevant to the JOB DESCRIPTION requirements
+- Be UNIQUE to this candidate - leverage the candidate''s specific technology stack and experience to create tailored problem statements
 - Include a detailed problem description (3-4 paragraphs)
 - Include a concrete example with specific data/numbers
 - End with a challenging question

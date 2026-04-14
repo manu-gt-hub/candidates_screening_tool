@@ -115,7 +115,7 @@ def build_technical_test_pdf(candidate_data, output_path, logo_path=None):
     S = _get_test_styles()
     name = candidate_data["name"]
     test_data = candidate_data.get("technical_test") or {}
-    role = candidate_data.get("role", "Technical")
+    role = candidate_data.get("candidate_role", "") or candidate_data.get("role", "Technical")
 
     filename = os.path.join(output_path, f"Technical_Test_{_safe_name(name)}.pdf")
     doc = SimpleDocTemplate(
@@ -211,7 +211,7 @@ def build_ranking_report_pdf(ranking_rows, output_path, logo_path=None,
     story = []
 
     # Header — logo (optional)
-    story.extend(_logo_elements(logo_path, 2.5 * cm, 2.5 * cm, doc.width))
+    story.extend(_logo_elements(logo_path, 4 * cm, 4 * cm, doc.width))
 
     story.append(Paragraph("Candidate Ranking Report", S["title"]))
     story.append(Paragraph(
@@ -245,9 +245,12 @@ def build_ranking_report_pdf(ranking_rows, output_path, logo_path=None,
 
         # Name + score + seniority + optional badge
         badge_html = "  <font color='#2E7D32'>\u2714 Technical test generated</font>" if has_test else ""
+        cand_role = r.get("candidate_role", "") or ""
+        cand_seniority = r.get("candidate_seniority", "") or ""
+        role_info = f"{cand_role} \u00b7 " if cand_role else ""
         story.append(Paragraph(
             f"{name}  <font color='{color}'><b>{pct:.0f}%</b></font>  "
-            f"\u2014  {r['seniority']} \u00b7 {r['years_of_experience']}y exp"
+            f"\u2014  {role_info}{cand_seniority} \u00b7 {r['years_of_experience']}y exp"
             f"{badge_html}",
             S["candidate"],
         ))

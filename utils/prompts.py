@@ -14,9 +14,8 @@ def build_ranking_prompt(cv_text, jd_text):
         "- name (string): Full name of the candidate\n"
         "- ranking_percentage (number): Score 0-100 representing how well the candidate matches the JOB DESCRIPTION\n"
         "- report_summary (string): 2-3 sentences evaluating the candidate FIT for this specific role\n"
-        "- role (string): The role title from the job description\n"
-        '- seniority (string): The candidate\'s actual seniority level based on their professional experience. One of "Junior", "Mid", "Senior", "Lead", "Principal"\n'
-        '- jd_seniority (string): The seniority level REQUIRED by the JOB DESCRIPTION (not the candidate\'s level). One of "Junior", "Mid", "Senior", "Lead", "Principal"\n'
+        "- candidate_role (string): The candidate's current or most recent role title extracted from the CV\n"
+        '- candidate_seniority (string): The candidate\'s actual seniority level based on their professional experience. One of "Junior", "Mid", "Senior", "Lead", "Principal"\n'
         "- years_of_experience (integer): Estimated total years of professional experience\n"
         "- key_technologies (array of strings): All technologies mentioned in the CV\n"
         "- cv_highlights (array of strings): 3-5 most impressive achievements RELEVANT to this job\n"
@@ -28,16 +27,51 @@ def build_ranking_prompt(cv_text, jd_text):
     )
 
 
-def build_test_prompt(role, jd_seniority, jd_text):
-    """Build the prompt to generate 3 technical scenarios."""
+def build_test_prompt(role, candidate_seniority, jd_text,
+                     technical_context="", key_technologies=None,
+                     cv_highlights=None):
+    """Build the prompt to generate 3 technical scenarios.
+
+    Args:
+        role:                Role title from the job description.
+        candidate_seniority: The candidate's seniority level.
+        jd_text:             Full job description text.
+        technical_context:   Optional business domain context (e.g. "car after-sales area").
+        key_technologies:    Optional list of candidate's key technologies.
+        cv_highlights:       Optional list of candidate's CV highlights.
+    """
+    context_block = ""
+    if technical_context:
+        context_block = (
+            f"\nBUSINESS CONTEXT: The role is within the {technical_context} domain. "
+            f"Scenarios MUST be set in this specific business context.\n"
+        )
+
+    candidate_block = ""
+    if key_technologies or cv_highlights:
+        parts = []
+        if key_technologies:
+            parts.append(f"Technologies: {', '.join(key_technologies[:15])}")
+        if cv_highlights:
+            parts.append(f"Highlights: {'; '.join(cv_highlights[:5])}")
+        candidate_block = (
+            "\nCANDIDATE PROFILE (use this to tailor scenarios to the candidate's "
+            "specific background — each candidate must receive UNIQUE scenarios):\n"
+            + "\n".join(parts) + "\n"
+        )
+
     return (
         f"You are a senior technical interviewer creating a screening test "
-        f"for a {role} position at {jd_seniority} level.\n\n"
-        f"The job description requires:\n{jd_text}\n\n"
-        f"Create exactly 3 realistic technical scenarios to evaluate this candidate. "
+        f"for a {role} position at {candidate_seniority} level.\n"
+        f"{context_block}"
+        f"\nThe job description requires:\n{jd_text}\n"
+        f"{candidate_block}"
+        f"\nCreate exactly 3 realistic technical scenarios to evaluate this candidate. "
         f"Each scenario should:\n"
-        f"- Be appropriate for the seniority level required by the JOB DESCRIPTION ({jd_seniority})\n"
+        f"- Be appropriate for the candidate's seniority level ({candidate_seniority})\n"
         "- Test skills relevant to the JOB DESCRIPTION requirements\n"
+        "- Be UNIQUE to this candidate — leverage the candidate's specific technology "
+        "stack and experience to create tailored problem statements\n"
         "- Include a detailed problem description (3-4 paragraphs)\n"
         "- Include a concrete example with specific data/numbers\n"
         "- End with a challenging question\n\n"
