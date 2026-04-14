@@ -4,8 +4,23 @@ Each function returns a fully-formed prompt string ready to send to any LLM.
 """
 
 
-def build_ranking_prompt(cv_text, jd_text):
-    """Build the prompt to rank a single CV against a job description."""
+def build_ranking_prompt(cv_text, jd_text, tech_context=None):
+    """Build the prompt to rank a single CV against a job description.
+
+    Args:
+        cv_text:      Full text extracted from the candidate's CV.
+        jd_text:      Full job description text.
+        tech_context: Optional business domain (e.g. "e-commerce logistics").
+                      When set, the ranking considers domain-specific fit.
+    """
+    ctx = ""
+    if tech_context:
+        ctx = (
+            f"BUSINESS CONTEXT: This role operates within the {tech_context} domain. "
+            f"Evaluate the candidate's fit considering this specific business context "
+            f"\u2014 prioritise experience and skills relevant to {tech_context}.\n\n"
+        )
+
     return (
         "You are an expert HR analyst and technical recruiter. "
         "Evaluate the following CV/resume against the provided JOB DESCRIPTION. "
@@ -14,8 +29,9 @@ def build_ranking_prompt(cv_text, jd_text):
         "- name (string): Full name of the candidate\n"
         "- ranking_percentage (number): Score 0-100 representing how well the candidate matches the JOB DESCRIPTION\n"
         "- report_summary (string): 2-3 sentences evaluating the candidate FIT for this specific role\n"
-        "- role (string): The role title from the job description\n"
-        '- seniority (string): The candidate\'s actual seniority level based on their professional experience. One of "Junior", "Mid", "Senior", "Lead", "Principal"\n'
+        "- candidate_role (string): The candidate's current or most recent role title extracted from the CV\n"
+        '- candidate_seniority (string): The candidate\'s actual seniority level based on their professional experience. One of "Junior", "Mid", "Senior", "Lead", "Principal"\n'
+        "- jd_role (string): The role title as stated in the JOB DESCRIPTION (not the candidate's role)\n"
         '- jd_seniority (string): The seniority level REQUIRED by the JOB DESCRIPTION (not the candidate\'s level). One of "Junior", "Mid", "Senior", "Lead", "Principal"\n'
         "- years_of_experience (integer): Estimated total years of professional experience\n"
         "- key_technologies (array of strings): All technologies mentioned in the CV\n"
@@ -23,21 +39,51 @@ def build_ranking_prompt(cv_text, jd_text):
         "- gaps (array of strings): Missing skills or requirements from the JOB DESCRIPTION\n"
         "- discarded (boolean): ALWAYS set to false\n"
         "- discarded_reason (string or null): ALWAYS set to null\n\n"
+        f"{ctx}"
         f"=== JOB DESCRIPTION ===\n{jd_text}\n\n"
         f"=== CANDIDATE CV ===\n{cv_text}"
     )
 
 
-def build_test_prompt(role, jd_seniority, jd_text):
-    """Build the prompt to generate 3 technical scenarios."""
+def build_test_prompt(jd_text, topics=None, tech_context=None):
+    """Build the prompt to generate 3 technical scenarios from the JD.
+
+    Args:
+        jd_text:      Full job description text.
+        topics:       Optional list of 3 topic strings (from ``topic_pools.get_topics``).
+                      When provided, each scenario MUST cover one topic.
+        tech_context: Optional business context string.
+    """
+    # \u2500\u2500 Topic assignment block \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    topic_block = ""
+    if topics:
+        numbered = "\n".join(f"  Scenario {i+1}: {t}" for i, t in enumerate(topics))
+        topic_block = (
+            "\nCRITICAL \u2014 Mandatory topic assignment:\n"
+            "Each scenario MUST focus on its assigned topic below. "
+            "Do NOT swap, merge, or skip topics.\n"
+            f"{numbered}\n"
+        )
+
+    # \u2500\u2500 Business context \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    ctx = ""
+    if tech_context:
+        ctx = (
+            f"\nBUSINESS CONTEXT: The role is within the {tech_context} domain. "
+            f"Scenarios MUST be set in this specific business context.\n"
+        )
+
     return (
-        f"You are a senior technical interviewer creating a screening test "
-        f"for a {role} position at {jd_seniority} level.\n\n"
-        f"The job description requires:\n{jd_text}\n\n"
-        f"Create exactly 3 realistic technical scenarios to evaluate this candidate. "
-        f"Each scenario should:\n"
-        f"- Be appropriate for the seniority level required by the JOB DESCRIPTION ({jd_seniority})\n"
-        "- Test skills relevant to the JOB DESCRIPTION requirements\n"
+        f"You are a senior technical interviewer creating a screening test.\n"
+        f"{ctx}\n"
+        f"Read the following JOB DESCRIPTION carefully. From it, determine the "
+        f"role title and seniority level required. Then create exactly 3 realistic "
+        f"technical scenarios appropriate for that role and seniority.\n\n"
+        f"=== JOB DESCRIPTION ===\n{jd_text}\n"
+        f"{topic_block}\n"
+        "Each scenario should:\n"
+        "- Be appropriate for the seniority level described in the JOB DESCRIPTION\n"
+        "- Test skills and responsibilities mentioned in the JOB DESCRIPTION\n"
         "- Include a detailed problem description (3-4 paragraphs)\n"
         "- Include a concrete example with specific data/numbers\n"
         "- End with a challenging question\n\n"
