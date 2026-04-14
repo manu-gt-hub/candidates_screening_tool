@@ -26,6 +26,9 @@ print(f"  Reports out:   {config.EVALUATION_REPORTS_OUTPUT_PATH}")
 print(f"  AI model:      {config.AI_MODEL}")
 print(f"  Min threshold: {config.MIN_MATCH_THRESHOLD}%")
 print(f"  Tests for all: {config.GENERATE_TESTS_FOR_ALL_CANDIDATES}")
+_ctx = getattr(config, "TECHNICAL_CONTEXT", "") or ""
+print(f"  Tech context:  {_ctx if _ctx else '(none)'}")
+
 
 # COMMAND ----------
 
@@ -50,7 +53,14 @@ job_description_text = load_job_description(spark, config)
 # DBTITLE 1,Rank candidates with AI
 # Step 2: Rank all candidates against the job description (no one is discarded)
 _min_interview = config.MIN_MATCH_THRESHOLD
+_tech_ctx = getattr(config, "TECHNICAL_CONTEXT", "") or ""
 print(f"Minimum match for technical test: {_min_interview}%")
+if _tech_ctx:
+    print(f"Business context: {_tech_ctx}")
+
+_ctx_ranking = ""
+if _tech_ctx:
+    _ctx_ranking = f"BUSINESS CONTEXT: This role operates within the {_tech_ctx} domain. Evaluate the candidate''s fit considering this specific business context \u2014 prioritise experience and skills relevant to {_tech_ctx}.\n\n"
 
 _ranking_sql = f"""
 SELECT
@@ -71,6 +81,8 @@ Return ONLY a valid JSON object with exactly these fields:
 - report_summary (string): 2-3 sentences evaluating the candidate FIT for this specific role
 - candidate_role (string): The candidate''s current or most recent role title extracted from the CV
 - candidate_seniority (string): The candidate''s actual seniority level based on their professional experience. One of "Junior", "Mid", "Senior", "Lead", "Principal"
+- jd_role (string): The role title as stated in the JOB DESCRIPTION (not the candidate''s role)
+- jd_seniority (string): The seniority level REQUIRED by the JOB DESCRIPTION (not the candidate''s level). One of "Junior", "Mid", "Senior", "Lead", "Principal"
 - years_of_experience (integer): Estimated total years of professional experience
 - key_technologies (array of strings): All technologies mentioned in the CV
 - cv_highlights (array of strings): 3-5 most impressive achievements RELEVANT to this job
@@ -78,7 +90,7 @@ Return ONLY a valid JSON object with exactly these fields:
 - discarded (boolean): ALWAYS set to false
 - discarded_reason (string or null): ALWAYS set to null
 
-=== JOB DESCRIPTION ===
+{_ctx_ranking}=== JOB DESCRIPTION ===
 ',
           rd.full_text,
           '
@@ -87,9 +99,9 @@ Return ONLY a valid JSON object with exactly these fields:
 ',
           cv.full_text
         ),
-        responseFormat => 'STRUCT<result:STRUCT<name:STRING, ranking_percentage:DOUBLE, report_summary:STRING, candidate_role:STRING, candidate_seniority:STRING, years_of_experience:INT, key_technologies:ARRAY<STRING>, cv_highlights:ARRAY<STRING>, gaps:ARRAY<STRING>, discarded:BOOLEAN, discarded_reason:STRING>>'
+        responseFormat => 'STRUCT<result:STRUCT<name:STRING, ranking_percentage:DOUBLE, report_summary:STRING, candidate_role:STRING, candidate_seniority:STRING, jd_role:STRING, jd_seniority:STRING, years_of_experience:INT, key_technologies:ARRAY<STRING>, cv_highlights:ARRAY<STRING>, gaps:ARRAY<STRING>, discarded:BOOLEAN, discarded_reason:STRING>>'
       ),
-      'name STRING, ranking_percentage DOUBLE, report_summary STRING, candidate_role STRING, candidate_seniority STRING, years_of_experience INT, key_technologies ARRAY<STRING>, cv_highlights ARRAY<STRING>, gaps ARRAY<STRING>, discarded BOOLEAN, discarded_reason STRING'
+      'name STRING, ranking_percentage DOUBLE, report_summary STRING, candidate_role STRING, candidate_seniority STRING, jd_role STRING, jd_seniority STRING, years_of_experience INT, key_technologies ARRAY<STRING>, cv_highlights ARRAY<STRING>, gaps ARRAY<STRING>, discarded BOOLEAN, discarded_reason STRING'
     ) AS parsed_result,
     cv.path AS source_file
   FROM cv_texts cv
@@ -109,7 +121,11 @@ ranking_df.createOrReplaceTempView("candidate_rankings")
 # COMMAND ----------
 
 # DBTITLE 1,Generate technical tests with AI
-# Step 4: Generate technical tests for candidates >= MIN_MATCH_THRESHOLD %
+# Step 4: Generate UNIQUE technical tests per candidate, based on the JOB DESCRIPTION.
+#         Topics rotate from utils/topic_pools.py so each candidate receives
+#         a different set of 3 technical themes.
+
+from utils.topic_pools import get_topics
 
 _min_pct = config.MIN_MATCH_THRESHOLD
 _gen_all = config.GENERATE_TESTS_FOR_ALL_CANDIDATES
@@ -119,33 +135,55 @@ if _gen_all:
     _where_clause = ""
     print(f"GENERATE_TESTS_FOR_ALL_CANDIDATES = True \u2192 generating tests for ALL candidates")
 else:
-    _where_clause = f"WHERE ranking.ranking_percentage >= {_min_pct}"
+    _where_clause = f"WHERE ranking_percentage >= {_min_pct}"
     print(f"Generating tests only for candidates >= {_min_pct}%")
+
+# Get qualifying candidates from the materialized ranking view
+_candidates_df = spark.sql(f"""
+  SELECT * FROM candidate_rankings
+  {_where_clause}
+  ORDER BY ranking_percentage DESC
+""")
+_candidate_rows = _candidates_df.collect()
+print(f"\n{len(_candidate_rows)} candidate(s) qualify for technical tests")
+
+# Determine the JD role for topic pool selection
+_jd_role = _candidate_rows[0]["jd_role"] if _candidate_rows else None
+print(f"JD role detected: {_jd_role}  \u2192  topic pool selected")
 
 _ctx_sql = ""
 if _tech_ctx:
     _ctx_sql = f"\nBUSINESS CONTEXT: The role is within the {_tech_ctx} domain. Scenarios MUST be set in this specific business context.\n"
 
-top_candidates_with_tests_df = spark.sql(f"""
-SELECT
-  ranking.*,
-  from_json(
-    ai_query(
-      '{config.AI_MODEL}',
-      CONCAT(
-        'You are a senior technical interviewer creating a screening test for a ', ranking.candidate_role, ' position at ', ranking.candidate_seniority, ' level.
+# Generate one test per candidate, each with unique topics from the pool
+_test_results = []
+for variant_num, row in enumerate(_candidate_rows, start=1):
+    topics = get_topics(variant_num, role=_jd_role)
+    topic_lines = "\n".join(f"  Scenario {i+1}: {t}" for i, t in enumerate(topics))
+    topic_str = ", ".join(topics)
+
+    print(f"  Variant {variant_num}: {row['name']}  \u2192  [{topic_str}]")
+
+    _test_df = spark.sql(f"""
+    SELECT from_json(
+      ai_query(
+        '{config.AI_MODEL}',
+        CONCAT(
+          'You are a senior technical interviewer creating a screening test.
 {_ctx_sql}
-The job description requires:
+Read the following JOB DESCRIPTION carefully. From it, determine the role title and seniority level required. Then create exactly 3 realistic technical scenarios appropriate for that role and seniority.
+
+=== JOB DESCRIPTION ===
 ', rd.full_text, '
 
-CANDIDATE PROFILE (use this to tailor scenarios to the candidate''s specific background - each candidate must receive UNIQUE scenarios):
-Technologies: ', array_join(ranking.key_technologies, ', '), '
-Highlights: ', array_join(ranking.cv_highlights, '; '), '
+CRITICAL \u2014 Mandatory topic assignment:
+Each scenario MUST focus on its assigned topic below. Do NOT swap, merge, or skip topics.
+{topic_lines}
 
-Create exactly 3 realistic technical scenarios to evaluate this candidate. Each scenario should:
-- Be appropriate for the candidate''s seniority level (', ranking.candidate_seniority, ')
-- Test skills relevant to the JOB DESCRIPTION requirements
-- Be UNIQUE to this candidate - leverage the candidate''s specific technology stack and experience to create tailored problem statements
+Each scenario should:
+- Be appropriate for the seniority level described in the JOB DESCRIPTION
+- Test skills and responsibilities mentioned in the JOB DESCRIPTION
+- Focus specifically on the assigned topic
 - Include a detailed problem description (3-4 paragraphs)
 - Include a concrete example with specific data/numbers
 - End with a challenging question
@@ -161,33 +199,45 @@ IMPORTANT \u2014 Instructions format:
 - Focus on practical reasoning and problem-solving approach
 
 Return ONLY a valid JSON object with this structure:
-{{{{
+{{{{{{
   "test_title": "<Role> Screening Test",
   "instructions": "Instructions for candidates with 3-4 bullet points",
   "scenarios": [
-    {{{{
+    {{{{{{
       "number": 1,
       "title": "Scenario title",
       "description": "Detailed problem description",
       "example": "Concrete example with data",
       "question": "The evaluation question"
-    }}}}
+    }}}}}}
   ]
-}}}}'
+}}}}}}'
+        ),
+        responseFormat => 'STRUCT<result:STRUCT<test_title:STRING, instructions:STRING, scenarios:ARRAY<STRUCT<number:INT, title:STRING, description:STRING, example:STRING, question:STRING>>>>'
       ),
-      responseFormat => 'STRUCT<result:STRUCT<test_title:STRING, instructions:STRING, scenarios:ARRAY<STRUCT<number:INT, title:STRING, description:STRING, example:STRING, question:STRING>>>>'
-    ),
-    'test_title STRING, instructions STRING, scenarios ARRAY<STRUCT<number:INT, title:STRING, description:STRING, example:STRING, question:STRING>>'
-  ) AS technical_test
-FROM candidate_rankings ranking
-CROSS JOIN role_description rd
-{_where_clause}
-ORDER BY ranking.ranking_percentage DESC
-""")
+      'test_title STRING, instructions STRING, scenarios ARRAY<STRUCT<number:INT, title:STRING, description:STRING, example:STRING, question:STRING>>'
+    ) AS technical_test
+    FROM role_description rd
+    """)
+    _test_results.append((row, _test_df.collect()[0]["technical_test"]))
+    print(f"    \u2713 done")
 
-print(f"Candidates with technical tests generated:")
+# Combine ranking data + generated tests into a single DataFrame
+from pyspark.sql import Row as _Row
+
+_combined_rows = []
+for row, test in _test_results:
+    d = row.asDict()
+    d["technical_test"] = test
+    _combined_rows.append(d)
+
+top_candidates_with_tests_df = spark.createDataFrame(
+    _combined_rows, _candidates_df.schema.add("technical_test", _test_df.schema["technical_test"].dataType)
+)
+
+print(f"\nCandidates with technical tests generated:")
 display(top_candidates_with_tests_df)
-print(f"\n{top_candidates_with_tests_df.count()} candidate(s) qualify for technical tests")
+print(f"\n{len(_combined_rows)} candidate(s) with unique technical tests (topics from pool)")
 
 # COMMAND ----------
 
@@ -237,7 +287,7 @@ os.makedirs(REPORT_PATH, exist_ok=True)
 _tested_names = set(generated)
 
 report = build_ranking_report_pdf(
-    ranking_rows, REPORT_PATH, _logo,
+    [r.asDict(recursive=True) for r in ranking_rows], REPORT_PATH, _logo,
     min_threshold=config.MIN_MATCH_THRESHOLD,
     tested_names=_tested_names,
 )

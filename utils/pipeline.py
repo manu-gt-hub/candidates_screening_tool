@@ -12,6 +12,7 @@ from utils.prompts import (
     build_test_prompt,
     build_evaluation_prompt,
 )
+from utils.topic_pools import get_topics
 
 
 # ── PDF parsing (local mode — pdfplumber) ────────────────────────────
@@ -71,9 +72,13 @@ def rank_candidates(cv_documents, jd_text, config):
     Returns:
         list[dict] sorted by ranking_percentage descending.
     """
+    tech_context = getattr(config, "TECHNICAL_CONTEXT", "") or ""
+
     results = []
     for doc in cv_documents:
-        prompt = build_ranking_prompt(doc["full_text"], jd_text)
+        prompt = build_ranking_prompt(
+            doc["full_text"], jd_text, tech_context=tech_context or None
+        )
         ranking = query_llm(prompt, config)
         ranking["source_file"] = doc["path"]
         results.append(ranking)
@@ -88,7 +93,11 @@ def rank_candidates(cv_documents, jd_text, config):
 # ── Technical test generation ────────────────────────────────────
 
 def generate_tests(ranked_candidates, jd_text, config):
-    """Generate technical tests for candidates above the threshold.
+    """Generate unique technical tests per candidate, based on the JD.
+
+    Each candidate receives a different set of 3 topics from the pool
+    (see ``topic_pools.py``).  The topics rotate so no two candidates
+    share the same combination.
 
     Returns:
         list[dict] — only the candidates that received tests (with
@@ -102,27 +111,33 @@ def generate_tests(ranked_candidates, jd_text, config):
         if gen_all or c.get("ranking_percentage", 0) >= min_pct
     ]
 
+    if not qualifying:
+        print("No candidates qualify for technical tests.")
+        return qualifying
+
+    # Use jd_role from the first candidate (all share the same JD)
+    jd_role = qualifying[0].get("jd_role", None)
+    tech_context = getattr(config, "TECHNICAL_CONTEXT", "") or ""
+
     print(
-        f"Generating tests for {len(qualifying)}/"
-        f"{len(ranked_candidates)} candidate(s)"
+        f"Generating unique tests for {len(qualifying)}/"
+        f"{len(ranked_candidates)} candidate(s)  (role: {jd_role})"
     )
 
-    technical_context = getattr(config, "TECHNICAL_CONTEXT", "") or ""
-
-    for c in qualifying:
-        role = c.get("candidate_role", "Technical")
-        candidate_seniority = c.get("candidate_seniority", "Senior")
+    for variant_num, c in enumerate(qualifying, start=1):
+        topics = get_topics(variant_num, role=jd_role)
         prompt = build_test_prompt(
-            role, candidate_seniority, jd_text,
-            technical_context=technical_context,
-            key_technologies=c.get("key_technologies"),
-            cv_highlights=c.get("cv_highlights"),
+            jd_text,
+            topics=topics,
+            tech_context=tech_context or None,
         )
         test = query_llm(prompt, config)
         c["technical_test"] = test
+        topic_str = ", ".join(topics)
         print(
             f"  \u2713 {c.get('name', '?')}: "
-            f"{test.get('test_title', 'Test generated')}"
+            f"{test.get('test_title', 'Test generated')}  "
+            f"[{topic_str}]"
         )
 
     return qualifying
