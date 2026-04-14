@@ -6,6 +6,15 @@
 import json
 import os
 
+_SYSTEM_PROMPT = (
+    "You are an expert assistant. "
+    "Always respond with valid JSON only, no markdown fences."
+)
+
+# Cached boto3 client (reused across calls in local mode)
+_local_client_cache = None
+_local_client_key = None
+
 
 def is_databricks():
     """Return True if running inside a Databricks runtime."""
@@ -56,19 +65,11 @@ def query_llm(prompt, config):
 
 def _query_databricks(prompt, config):
     """Send prompt via OpenAI SDK to Databricks Foundation Model API."""
-    from openai import OpenAI
-
     client, model = _databricks_client(config)
     response = client.chat.completions.create(
         model=model,
         messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are an expert assistant. "
-                    "Always respond with valid JSON only, no markdown fences."
-                ),
-            },
+            {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ],
         temperature=0.3,
@@ -78,39 +79,33 @@ def _query_databricks(prompt, config):
 
 def _query_local(prompt, config):
     """Send prompt via boto3 Bedrock converse API."""
-    import boto3
+    global _local_client_cache, _local_client_key
 
     api_key = getattr(config, "API_KEY", None)
     endpoint = getattr(config, "API_BASE_URL", None) or getattr(config, "ENDPOINT", None)
     model = getattr(config, "LOCAL_AI_MODEL", None) or config.AI_MODEL
 
     if not api_key:
-        raise ValueError(
-            "API_KEY must be set in config.py for local mode"
-        )
+        raise ValueError("API_KEY must be set in config.py for local mode")
     if not endpoint:
-        raise ValueError(
-            "API_BASE_URL (or ENDPOINT) must be set in config.py for local mode"
-        )
+        raise ValueError("API_BASE_URL (or ENDPOINT) must be set in config.py for local mode")
 
     region = getattr(config, "BEDROCK_REGION", None) or "us-east-1"
+    cache_key = (endpoint, region)
 
-    os.environ["AWS_BEARER_TOKEN_BEDROCK"] = api_key
+    if _local_client_cache is None or _local_client_key != cache_key:
+        import boto3
+        os.environ["AWS_BEARER_TOKEN_BEDROCK"] = api_key
+        _local_client_cache = boto3.client(
+            service_name="bedrock-runtime",
+            endpoint_url=endpoint,
+            region_name=region,
+        )
+        _local_client_key = cache_key
 
-    client = boto3.client(
-        service_name="bedrock-runtime",
-        endpoint_url=endpoint,
-        region_name=region,
-    )
-
-    system_prompt = (
-        "You are an expert assistant. "
-        "Always respond with valid JSON only, no markdown fences."
-    )
-
-    response = client.converse(
+    response = _local_client_cache.converse(
         modelId=model,
-        system=[{"text": system_prompt}],
+        system=[{"text": _SYSTEM_PROMPT}],
         messages=[{"role": "user", "content": [{"text": prompt}]}],
     )
     return response["output"]["message"]["content"][0]["text"]
@@ -120,11 +115,9 @@ def _query_local(prompt, config):
 
 def _databricks_client(config):
     from openai import OpenAI
-
     token = _get_token()
     host = _get_host()
-    client = OpenAI(api_key=token, base_url=f"https://{host}/serving-endpoints")
-    return client, config.AI_MODEL
+    return OpenAI(api_key=token, base_url=f"https://{host}/serving-endpoints"), config.AI_MODEL
 
 
 def _get_token():
@@ -153,5 +146,4 @@ def _get_host():
     except Exception:
         pass
     raise RuntimeError("Cannot determine Databricks workspace URL")
-
 

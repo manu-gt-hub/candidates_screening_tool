@@ -3,17 +3,16 @@
 Requires ``reportlab`` — import this module only AFTER ``%pip install reportlab``.
 """
 import os
-from datetime import date, datetime
+from datetime import datetime
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm, mm
 from reportlab.lib.colors import HexColor
-from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_JUSTIFY, TA_CENTER
-from reportlab.lib import colors
+from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    Image, HRFlowable, KeepTogether,
+    Image, HRFlowable,
 )
 
 
@@ -335,10 +334,11 @@ def build_evaluation_report_pdf(ev, output_path):
     story.append(Paragraph(ev.get("suitability_assessment", ""), S["body"]))
 
     # Highlights
-    for h in (ev.get("highlights") or []):
-        if not any(el for el in story if isinstance(el, Paragraph) and "Key Highlights" in el.text):
-            story.append(Paragraph("Key Highlights", S["section"]))
-        story.append(Paragraph(f"\u2022 {h}", S["bullet"]))
+    highlights = ev.get("highlights") or []
+    if highlights:
+        story.append(Paragraph("Key Highlights", S["section"]))
+        for h in highlights:
+            story.append(Paragraph(f"\u2022 {h}", S["bullet"]))
 
     # Scenario evaluations
     scenarios = ev.get("scenario_evaluations") or []

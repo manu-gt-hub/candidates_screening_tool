@@ -23,6 +23,7 @@ SELECT path,
   ) AS full_text
 FROM parsed
 WHERE try_cast(parsed:error_status AS STRING) IS NULL
+  AND full_text IS NOT NULL AND TRIM(full_text) != ''
 """
 
 
