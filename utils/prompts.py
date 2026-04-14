@@ -10,7 +10,7 @@ def build_ranking_prompt(cv_text, jd_text, tech_context=None):
     Args:
         cv_text:      Full text extracted from the candidate's CV.
         jd_text:      Full job description text.
-        tech_context: Optional business domain (e.g. "car after sales").
+        tech_context: Optional business domain (e.g. "e-commerce logistics").
                       When set, the ranking considers domain-specific fit.
     """
     ctx = ""
