@@ -107,10 +107,17 @@ def generate_tests(ranked_candidates, jd_text, config):
         f"{len(ranked_candidates)} candidate(s)"
     )
 
+    technical_context = getattr(config, "TECHNICAL_CONTEXT", "") or ""
+
     for c in qualifying:
-        role = c.get("role", "Technical")
-        jd_seniority = c.get("jd_seniority", "Senior")
-        prompt = build_test_prompt(role, jd_seniority, jd_text)
+        role = c.get("candidate_role", "Technical")
+        candidate_seniority = c.get("candidate_seniority", "Senior")
+        prompt = build_test_prompt(
+            role, candidate_seniority, jd_text,
+            technical_context=technical_context,
+            key_technologies=c.get("key_technologies"),
+            cv_highlights=c.get("cv_highlights"),
+        )
         test = query_llm(prompt, config)
         c["technical_test"] = test
         print(
