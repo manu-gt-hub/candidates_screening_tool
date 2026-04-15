@@ -77,7 +77,7 @@ def rank_candidates(cv_documents, jd_text, config):
     results = []
     for doc in cv_documents:
         prompt = build_ranking_prompt(
-            doc["full_text"], jd_text, tech_context=tech_context or None
+            doc["full_text"], jd_text, tech_context=tech_context
         )
         ranking = query_llm(prompt, config)
         ranking["source_file"] = doc["path"]
@@ -129,7 +129,7 @@ def generate_tests(ranked_candidates, jd_text, config):
         prompt = build_test_prompt(
             jd_text,
             topics=topics,
-            tech_context=tech_context or None,
+            tech_context=tech_context,
         )
         test = query_llm(prompt, config)
         c["technical_test"] = test

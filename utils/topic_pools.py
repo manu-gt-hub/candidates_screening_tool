@@ -57,17 +57,21 @@ def _resolve_pool(role: str | None) -> list[str]:
     if not role:
         return DEFAULT_POOL
     role_lower = role.lower().replace("-", " ").replace("_", " ")
+    role_words = role_lower.split()
+    partial_match = None
     for key, pool in TOPIC_POOLS.items():
-        # Match if the key words appear in the role string
-        key_words = set(key.replace("_", " ").split())
-        if key_words.issubset(role_lower.split()) or key.replace("_", " ") in role_lower:
+        key_norm = key.replace("_", " ")
+        key_words = set(key_norm.split())
+        # Exact match: all key words present or key phrase is a substring
+        if key_words.issubset(role_words) or key_norm in role_lower:
             return pool
-    # Partial match: any pool key word in the role
-    for key, pool in TOPIC_POOLS.items():
-        for word in key.replace("_", " ").split():
-            if word in role_lower and word not in ("data",):
-                return pool
-    return DEFAULT_POOL
+        # Partial match: any meaningful key word in the role (first hit wins)
+        if partial_match is None:
+            for word in key_words:
+                if word in role_lower and word not in ("data",):
+                    partial_match = pool
+                    break
+    return partial_match or DEFAULT_POOL
 
 
 def get_topics(
