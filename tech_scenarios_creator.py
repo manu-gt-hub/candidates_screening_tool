@@ -184,9 +184,9 @@ Each scenario should:
 - Be appropriate for the seniority level described in the JOB DESCRIPTION
 - Test skills and responsibilities mentioned in the JOB DESCRIPTION
 - Focus specifically on the assigned topic
-- Include a detailed problem description (3-4 paragraphs)
-- Include a concrete example with specific data/numbers
-- End with a challenging question
+- Include a concise problem description (1 short paragraph, max 80 words)
+- Include a brief concrete example with specific numbers (max 60 words)
+- End with one direct, challenging question (1-2 sentences)
 
 IMPORTANT \u2014 Technology-agnostic scenarios:
 - Do NOT mention specific vendor products or tools by name (e.g. AWS, Azure, Spark, Kafka, Kubernetes)
@@ -198,16 +198,18 @@ IMPORTANT \u2014 Instructions format:
 - The instructions MUST tell the candidate to answer clearly and concisely, applying specific technologies they know if applicable, to solve each scenario
 - Focus on practical reasoning and problem-solving approach
 
+IMPORTANT \u2014 Brevity: The entire test with 3 scenarios must fit on 2 printed A4 pages. Be concise and direct. Avoid verbose introductions or unnecessary context.
+
 Return ONLY a valid JSON object with this structure:
 {{{{{{
   "test_title": "<Role> Screening Test",
-  "instructions": "Instructions for candidates with 3-4 bullet points",
+  "instructions": "Instructions for candidates with 2-3 short bullet points",
   "scenarios": [
     {{{{{{
       "number": 1,
       "title": "Scenario title",
-      "description": "Detailed problem description",
-      "example": "Concrete example with data",
+      "description": "Concise problem description",
+      "example": "Brief example with data",
       "question": "The evaluation question"
     }}}}}}
   ]
