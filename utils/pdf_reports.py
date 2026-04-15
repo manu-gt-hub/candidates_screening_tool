@@ -61,7 +61,7 @@ def _logo_elements(logo_path, width, height, doc_width):
 
 
 # ======================================================================
-#  1. Technical Test PDF  (one-page per candidate)
+#  1. Technical Test PDF  (one per candidate, multi-page)
 # ======================================================================
 
 _TEST_STYLES = None
@@ -106,7 +106,10 @@ def _get_test_styles():
 
 
 def build_technical_test_pdf(candidate_data, output_path, logo_path=None):
-    """Generate a one-page PDF technical test for a candidate.
+    """Generate a PDF technical test for a candidate.
+
+    Content flows across multiple pages automatically via reportlab\'s
+    SimpleDocTemplate — no text truncation is applied.
 
     Returns:
         Path to the generated PDF file.
@@ -131,10 +134,10 @@ def build_technical_test_pdf(candidate_data, output_path, logo_path=None):
     test_title = test_data.get("test_title", f"{role} Screening Test")
     story.append(Paragraph(test_title, S["title"]))
 
-    # Instructions
+    # Instructions (full text — no truncation)
     instructions = test_data.get("instructions", "")
     if instructions:
-        story.append(Paragraph(f"<b>Instructions:</b> {_truncate(instructions, 190)}", S["instructions"]))
+        story.append(Paragraph(f"<b>Instructions:</b> {instructions}", S["instructions"]))
     else:
         story.append(Paragraph(
             "<b>Instructions:</b> Answer each scenario clearly and concisely. "
@@ -142,7 +145,7 @@ def build_technical_test_pdf(candidate_data, output_path, logo_path=None):
             S["instructions"],
         ))
 
-    # Scenarios
+    # Scenarios (full text — no truncation)
     for i, sc in enumerate(test_data.get("scenarios", []), 1):
         if hasattr(sc, "asDict"):
             sc = sc.asDict()
@@ -150,18 +153,18 @@ def build_technical_test_pdf(candidate_data, output_path, logo_path=None):
         title = sc.get("title", f"Technical Scenario {i}")
         story.append(Paragraph(f"Scenario {num} \u2014 {title}", S["scenario"]))
         if sc.get("description"):
-            story.append(Paragraph(_truncate(sc["description"], 280), S["body"]))
+            story.append(Paragraph(sc["description"], S["body"]))
         if sc.get("example"):
-            story.append(Paragraph(f"<b>Example:</b> {_truncate(sc['example'], 210)}", S["example"]))
+            story.append(Paragraph(f"<b>Example:</b> {sc['example']}", S["example"]))
         if sc.get("question"):
-            story.append(Paragraph(f"<b>Question:</b> {_truncate(sc['question'], 160)}", S["question"]))
+            story.append(Paragraph(f"<b>Question:</b> {sc['question']}", S["question"]))
 
     doc.build(story)
     return filename
 
 
 # ======================================================================
-#  2. Candidate Ranking Report  (single PDF \u2014 suggested ranking, no discards)
+#  2. Candidate Ranking Report  (single PDF — suggested ranking, no discards)
 # ======================================================================
 
 def build_ranking_report_pdf(ranking_rows, output_path, logo_path=None,
@@ -169,15 +172,15 @@ def build_ranking_report_pdf(ranking_rows, output_path, logo_path=None,
     """Generate a ranking summary PDF with colour-coded tiers.
 
     All candidates appear in a single ranked list.  Colour coding:
-      * **Green** (>= *min_threshold*) \u2014 recommended for technical test.
-      * **Amber** (>= 50 and < *min_threshold*) \u2014 borderline; consider for interview.
-      * **Red** (< 50) \u2014 not recommended at this time.
+      * **Green** (>= *min_threshold*) — recommended for technical test.
+      * **Amber** (>= 50 and < *min_threshold*) — borderline; consider for interview.
+      * **Red** (< 50) — not recommended at this time.
 
     Args:
         ranking_rows:  List of Row objects from the ranking query.
         output_path:   Directory for the output PDF.
         logo_path:     Path to logo image (optional; omitted if None or file missing).
-        min_threshold: Minimum match % considered \"recommended\" (default 70).
+        min_threshold: Minimum match % considered "recommended" (default 70).
         tested_names:  Set of candidate names that received a technical test.
 
     Returns:
