@@ -95,11 +95,13 @@ def _query_local(prompt, config):
 
     if _local_client_cache is None or _local_client_key != cache_key:
         import boto3
+        from botocore.config import Config as BotoConfig
         os.environ["AWS_BEARER_TOKEN_BEDROCK"] = api_key
         _local_client_cache = boto3.client(
             service_name="bedrock-runtime",
             endpoint_url=endpoint,
             region_name=region,
+            config=BotoConfig(read_timeout=300, retries={"max_attempts": 2}),
         )
         _local_client_key = cache_key
 
