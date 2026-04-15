@@ -13,17 +13,20 @@ CREATE OR REPLACE TEMPORARY VIEW {view_name} AS
 WITH parsed AS (
   SELECT path, ai_parse_document(content, map('version', '2.0')) AS parsed
   FROM {binary_view}
+),
+extracted AS (
+  SELECT path,
+    concat_ws('\\n\\n',
+      transform(
+        try_cast(parsed:document:elements AS ARRAY<VARIANT>),
+        element -> try_cast(element:content AS STRING)
+      )
+    ) AS full_text
+  FROM parsed
+  WHERE try_cast(parsed:error_status AS STRING) IS NULL
 )
-SELECT path,
-  concat_ws('\\n\\n',
-    transform(
-      try_cast(parsed:document:elements AS ARRAY<VARIANT>),
-      element -> try_cast(element:content AS STRING)
-    )
-  ) AS full_text
-FROM parsed
-WHERE try_cast(parsed:error_status AS STRING) IS NULL
-  AND full_text IS NOT NULL AND TRIM(full_text) != ''
+SELECT * FROM extracted
+WHERE full_text IS NOT NULL AND TRIM(full_text) != ''
 """
 
 
