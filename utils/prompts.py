@@ -84,9 +84,10 @@ def build_test_prompt(jd_text, topics=None, tech_context=None):
         "Each scenario should:\n"
         "- Be appropriate for the seniority level described in the JOB DESCRIPTION\n"
         "- Test skills and responsibilities mentioned in the JOB DESCRIPTION\n"
-        "- Include a detailed problem description (3-4 paragraphs)\n"
-        "- Include a concrete example with specific data/numbers\n"
-        "- End with a challenging question\n\n"
+        "- Focus specifically on the assigned topic\n"
+        "- Include a concise problem description (1 short paragraph, max 80 words)\n"
+        "- Include a brief concrete example with specific numbers (max 60 words)\n"
+        "- End with one direct, challenging question (1-2 sentences)\n\n"
         "IMPORTANT \u2014 Technology-agnostic scenarios:\n"
         "- Do NOT mention specific vendor products or tools by name "
         "(e.g. AWS, Azure, Spark, Kafka, Kubernetes)\n"
@@ -102,17 +103,19 @@ def build_test_prompt(jd_text, topics=None, tech_context=None):
         "- The instructions MUST tell the candidate to answer clearly and concisely, "
         "applying specific technologies they know if applicable, to solve each scenario\n"
         "- Focus on practical reasoning and problem-solving approach\n\n"
+        "IMPORTANT \u2014 Brevity: The entire test with 3 scenarios must fit on 2 printed "
+        "A4 pages. Be concise and direct. Avoid verbose introductions or unnecessary context.\n\n"
         "Return ONLY a valid JSON object with this structure:\n"
         "{\n"
-        '  \"test_title\": \"<Role> Screening Test\",\n'
-        '  \"instructions\": \"Instructions for candidates with 3-4 bullet points\",\n'
-        '  \"scenarios\": [\n'
+        '  "test_title": "<Role> Screening Test",\n'
+        '  "instructions": "Instructions for candidates with 2-3 short bullet points",\n'
+        '  "scenarios": [\n'
         "    {\n"
-        '      \"number\": 1,\n'
-        '      \"title\": \"Scenario title\",\n'
-        '      \"description\": \"Detailed problem description\",\n'
-        '      \"example\": \"Concrete example with data\",\n'
-        '      \"question\": \"The evaluation question\"\n'
+        '      "number": 1,\n'
+        '      "title": "Scenario title",\n'
+        '      "description": "Concise problem description",\n'
+        '      "example": "Brief example with data",\n'
+        '      "question": "The evaluation question"\n'
         "    }\n"
         "  ]\n"
         "}"
