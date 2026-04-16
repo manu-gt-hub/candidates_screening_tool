@@ -29,8 +29,22 @@ def _resolve_environment(config):
     return env
 
 
+_MAX_RETRIES = 2
+
+
+def _strip_fences(text):
+    """Remove markdown code fences (```json ... ```) if present."""
+    if text.startswith("```"):
+        lines = text.split("\n")
+        end = len(lines) - 1 if lines[-1].strip() == "```" else len(lines)
+        text = "\n".join(lines[1:end]).strip()
+    return text
+
+
 def query_llm(prompt, config):
     """Send a prompt to the configured LLM and return the parsed JSON response.
+
+    Retries up to ``_MAX_RETRIES`` times on malformed JSON before raising.
 
     Args:
         prompt: Full text prompt (must request JSON output).
@@ -40,27 +54,34 @@ def query_llm(prompt, config):
         dict parsed from the LLM JSON response.
     """
     env = _resolve_environment(config)
+    call = _query_databricks if env == "DBX" else _query_local
 
-    if env == "DBX":
-        content = _query_databricks(prompt, config)
-    else:
-        content = _query_local(prompt, config)
+    last_error = None
+    for attempt in range(1, _MAX_RETRIES + 2):
+        content = call(prompt, config).strip()
+        content = _strip_fences(content)
 
-    content = content.strip()
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError as exc:
+            last_error = exc
+            print(
+                f"  ⚠ LLM returned invalid JSON (attempt {attempt}/"
+                f"{_MAX_RETRIES + 1}): {exc}"
+            )
+            print(f"    Raw (first 300 chars): {content[:300]}")
+            if attempt <= _MAX_RETRIES:
+                continue
+            raise ValueError(
+                f"LLM returned invalid JSON after {_MAX_RETRIES + 1} attempts. "
+                f"Last error: {last_error}"
+            ) from last_error
 
-    # Strip markdown code fences if the model wraps them anyway
-    if content.startswith("```"):
-        lines = content.split("\n")
-        end = len(lines) - 1 if lines[-1].strip() == "```" else len(lines)
-        content = "\n".join(lines[1:end]).strip()
+        # Unwrap {"result": {…}} envelope that Databricks FMAPI sometimes adds
+        if isinstance(parsed, dict) and list(parsed.keys()) == ["result"]:
+            parsed = parsed["result"]
 
-    parsed = json.loads(content)
-
-    # Unwrap {"result": {…}} envelope that Databricks FMAPI sometimes adds
-    if isinstance(parsed, dict) and list(parsed.keys()) == ["result"]:
-        parsed = parsed["result"]
-
-    return parsed
+        return parsed
 
 
 def _query_databricks(prompt, config):

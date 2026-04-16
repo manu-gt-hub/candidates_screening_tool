@@ -2,3 +2,7 @@
 boto3>=1.34
 pdfplumber>=0.11
 reportlab>=4.1
+
+# Databricks mode dependencies (create_jobs.py)
+# openai>=1.0           # included in Databricks Runtime
+# databricks-sdk>=0.20  # needed only for create_jobs.py
