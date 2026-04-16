@@ -61,7 +61,8 @@ print(f"Minimum match for technical test: {_min_interview}%")
 if _tech_ctx:
     print(f"Business context: {_tech_ctx}")
 
-_rk_prefix, _rk_sep, _rk_suffix = build_ranking_prompt_parts(tech_context=_tech_ctx or None)
+_rk_prefix, _rk_sep, _ = build_ranking_prompt_parts(tech_context=_tech_ctx or None)
+_model_sql = sql_esc(config.AI_MODEL)
 
 _ranking_sql = f"""
 SELECT
@@ -71,7 +72,7 @@ FROM (
   SELECT
     from_json(
       ai_query(
-        '{config.AI_MODEL}',
+        '{_model_sql}',
         CONCAT(
           '{sql_esc(_rk_prefix)}',
           rd.full_text,
@@ -147,7 +148,7 @@ for variant_num, row in enumerate(_candidate_rows, start=1):
     _test_df = spark.sql(f"""
     SELECT from_json(
       ai_query(
-        '{config.AI_MODEL}',
+        '{_model_sql}',
         CONCAT(
           '{sql_esc(_tp_prefix)}',
           rd.full_text,
