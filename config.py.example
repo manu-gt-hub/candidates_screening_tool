@@ -34,7 +34,7 @@ ENVIRONMENT = "AUTO"
 AI_MODEL = "databricks-claude-opus-4-6"
 
 # ── AI model (Local) ─────────────────────────────────────────────────
-# Set API_KEY here or export the OPENAI_API_KEY environment variable.
+# Set API_KEY here or export the API_KEY environment variable.
 # API_BASE_URL defaults to OpenAI; change it for Anthropic, Ollama, etc.
 API_KEY = ""
 API_BASE_URL = "https://api.openai.com/v1"          # OpenAI (default)
