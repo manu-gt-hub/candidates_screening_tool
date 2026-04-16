@@ -1,5 +1,4 @@
-"""Job description loading utilities."""
-from pyspark.sql import Row
+"""Job description loading utilities (Databricks mode — requires PySpark)."""
 
 
 def load_job_description(spark, config):
@@ -19,6 +18,7 @@ def load_job_description(spark, config):
         text = f.read()
     print(f"\u2713 Loaded ({len(text)} chars)")
 
+    from pyspark.sql import Row
     spark.createDataFrame([Row(full_text=text)]).createOrReplaceTempView("role_description")
     print("\u2713 role_description view created")
     return text
