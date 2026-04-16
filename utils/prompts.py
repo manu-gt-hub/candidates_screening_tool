@@ -10,6 +10,11 @@ references.  This keeps prompt text in **one place** for both modes.
 """
 
 
+def sql_esc(s):
+    """Escape single quotes for embedding in SQL string literals."""
+    return s.replace("'", "''")
+
+
 # ── Ranking prompt ────────────────────────────────────────────────────
 
 def _ranking_ctx_block(tech_context):

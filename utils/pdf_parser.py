@@ -30,6 +30,13 @@ WHERE full_text IS NOT NULL AND TRIM(full_text) != ''
 """
 
 
+def _validate_identifier(name):
+    """Raise ValueError if *name* is not a safe SQL identifier."""
+    import re
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+        raise ValueError(f"Invalid SQL identifier: {name!r}")
+
+
 def parse_pdfs_to_view(spark, pdf_dir, view_name="parsed_texts"):
     """Read all PDFs from *pdf_dir*, parse them with ``ai_parse_document``,
     and register the results as a Spark temporary view.
@@ -42,6 +49,7 @@ def parse_pdfs_to_view(spark, pdf_dir, view_name="parsed_texts"):
     Returns:
         Number of PDF files found.
     """
+    _validate_identifier(view_name)
     files_data = []
     for fname in sorted(os.listdir(pdf_dir)):
         if fname.lower().endswith(".pdf"):
