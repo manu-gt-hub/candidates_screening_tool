@@ -95,25 +95,3 @@ def get_topics(
     start = ((variant_number - 1) * n) % size
     indices = [(start + i) % size for i in range(n)]
     return [pool[i] for i in indices]
-
-
-def get_topics_str(
-    variant_number: int,
-    role: str | None = None,
-    n: int = SCENARIOS_PER_TEST,
-) -> str:
-    """Return topics formatted as a numbered string for prompt embedding.
-
-    Example::
-
-        1. Data quality & validation
-        2. Pipeline construction & orchestration
-        3. Data architecture & modeling
-    """
-    topics = get_topics(variant_number, role, n)
-    return "\n".join(f"{i+1}. {t}" for i, t in enumerate(topics))
-
-
-def list_roles() -> list[str]:
-    """Return available role keys."""
-    return list(TOPIC_POOLS.keys())
