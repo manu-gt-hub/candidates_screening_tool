@@ -50,7 +50,8 @@ job_description_text = load_job_description(spark, config)
 # Prompt text comes from utils/prompts.py — single source of truth for both modes.
 from utils.prompts import build_evaluation_prompt_parts, sql_esc
 
-_ev_prefix, _ev_sep, _ev_suffix = build_evaluation_prompt_parts()
+_ev_prefix, _ev_sep, _ = build_evaluation_prompt_parts()
+_model_sql = sql_esc(config.AI_MODEL)
 
 evaluations_df = spark.sql(f"""
 SELECT
@@ -60,7 +61,7 @@ FROM (
   SELECT
     from_json(
       ai_query(
-        '{config.AI_MODEL}',
+        '{_model_sql}',
         CONCAT(
           '{sql_esc(_ev_prefix)}',
           rd.full_text,

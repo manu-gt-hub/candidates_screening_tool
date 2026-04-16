@@ -11,9 +11,10 @@ _SYSTEM_PROMPT = (
     "Always respond with valid JSON only, no markdown fences."
 )
 
-# Cached boto3 client (reused across calls in local mode)
+# Cached clients (reused across calls)
 _local_client_cache = None
 _local_client_key = None
+_dbx_client_cache = None
 
 
 def is_databricks():
@@ -102,7 +103,7 @@ def _query_local(prompt, config):
     """Send prompt via boto3 Bedrock converse API."""
     global _local_client_cache, _local_client_key
 
-    api_key = getattr(config, "API_KEY", None)
+    api_key = getattr(config, "API_KEY", None) or os.environ.get("API_KEY")
     endpoint = getattr(config, "API_BASE_URL", None) or getattr(config, "ENDPOINT", None)
     model = getattr(config, "LOCAL_AI_MODEL", None) or config.AI_MODEL
 
@@ -137,10 +138,13 @@ def _query_local(prompt, config):
 # ── Databricks backend ───────────────────────────────────────────
 
 def _databricks_client(config):
-    from openai import OpenAI
-    token = _get_token()
-    host = _get_host()
-    return OpenAI(api_key=token, base_url=f"https://{host}/serving-endpoints"), config.AI_MODEL
+    global _dbx_client_cache
+    if _dbx_client_cache is None:
+        from openai import OpenAI
+        token = _get_token()
+        host = _get_host()
+        _dbx_client_cache = OpenAI(api_key=token, base_url=f"https://{host}/serving-endpoints")
+    return _dbx_client_cache, config.AI_MODEL
 
 
 def _get_token():
