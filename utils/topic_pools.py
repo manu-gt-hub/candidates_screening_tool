@@ -7,8 +7,9 @@ same combination.
 
 To add a new role, just add a key to ``TOPIC_POOLS``.
 """
+from typing import Dict, List, Optional
 
-TOPIC_POOLS: dict[str, list[str]] = {
+TOPIC_POOLS: Dict[str, List[str]] = {
     "data_engineer": [
         "Data quality & validation",
         "Pipeline construction & orchestration",
@@ -36,7 +37,7 @@ TOPIC_POOLS: dict[str, list[str]] = {
 }
 
 # Fallback pool when the role doesn't match any key
-DEFAULT_POOL: list[str] = [
+DEFAULT_POOL: List[str] = [
     "System design & architecture",
     "Data quality & validation",
     "Performance optimization",
@@ -52,7 +53,7 @@ DEFAULT_POOL: list[str] = [
 SCENARIOS_PER_TEST = 3
 
 
-def _resolve_pool(role: str | None) -> list[str]:
+def _resolve_pool(role: Optional[str]) -> List[str]:
     """Return the topic pool for a given role (case-insensitive, fuzzy)."""
     if not role:
         return DEFAULT_POOL
@@ -76,9 +77,9 @@ def _resolve_pool(role: str | None) -> list[str]:
 
 def get_topics(
     variant_number: int,
-    role: str | None = None,
+    role: Optional[str] = None,
     n: int = SCENARIOS_PER_TEST,
-) -> list[str]:
+) -> List[str]:
     """Return *n* topics for *variant_number* (1-based), rotating through the pool.
 
     Each variant gets a different slice.  With 10 topics and n=3 the first

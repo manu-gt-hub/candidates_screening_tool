@@ -53,7 +53,7 @@ job_description_text = load_job_description(spark, config)
 # DBTITLE 1,Rank candidates with AI
 # Step 2: Rank all candidates against the job description (no one is discarded)
 # Prompt text comes from utils/prompts.py — single source of truth for both modes.
-from utils.prompts import build_ranking_prompt_parts
+from utils.prompts import build_ranking_prompt_parts, sql_esc
 
 _min_interview = config.MIN_MATCH_THRESHOLD
 _tech_ctx = getattr(config, "TECHNICAL_CONTEXT", "") or ""
@@ -61,11 +61,8 @@ print(f"Minimum match for technical test: {_min_interview}%")
 if _tech_ctx:
     print(f"Business context: {_tech_ctx}")
 
-def _sql_esc(s):
-    """Escape single quotes for SQL string literals."""
-    return s.replace("'", "''")
-
-_rk_prefix, _rk_sep, _rk_suffix = build_ranking_prompt_parts(tech_context=_tech_ctx or None)
+_rk_prefix, _rk_sep, _ = build_ranking_prompt_parts(tech_context=_tech_ctx or None)
+_model_sql = sql_esc(config.AI_MODEL)
 
 _ranking_sql = f"""
 SELECT
@@ -75,11 +72,11 @@ FROM (
   SELECT
     from_json(
       ai_query(
-        '{config.AI_MODEL}',
+        '{_model_sql}',
         CONCAT(
-          '{_sql_esc(_rk_prefix)}',
+          '{sql_esc(_rk_prefix)}',
           rd.full_text,
-          '{_sql_esc(_rk_sep)}',
+          '{sql_esc(_rk_sep)}',
           cv.full_text
         ),
         responseFormat => 'STRUCT<result:STRUCT<name:STRING, ranking_percentage:DOUBLE, report_summary:STRING, candidate_role:STRING, candidate_seniority:STRING, jd_role:STRING, jd_seniority:STRING, years_of_experience:INT, key_technologies:ARRAY<STRING>, cv_highlights:ARRAY<STRING>, gaps:ARRAY<STRING>, discarded:BOOLEAN, discarded_reason:STRING>>'
@@ -151,11 +148,11 @@ for variant_num, row in enumerate(_candidate_rows, start=1):
     _test_df = spark.sql(f"""
     SELECT from_json(
       ai_query(
-        '{config.AI_MODEL}',
+        '{_model_sql}',
         CONCAT(
-          '{_sql_esc(_tp_prefix)}',
+          '{sql_esc(_tp_prefix)}',
           rd.full_text,
-          '{_sql_esc(_tp_suffix)}'
+          '{sql_esc(_tp_suffix)}'
         ),
         responseFormat => 'STRUCT<result:STRUCT<test_title:STRING, instructions:STRING, scenarios:ARRAY<STRUCT<number:INT, title:STRING, description:STRING, example:STRING, question:STRING>>>>'
       ),
@@ -167,8 +164,6 @@ for variant_num, row in enumerate(_candidate_rows, start=1):
     print(f"    \u2713 done")
 
 # Combine ranking data + generated tests into a single DataFrame
-from pyspark.sql import Row as _Row
-
 _combined_rows = []
 for row, test in _test_results:
     d = row.asDict()

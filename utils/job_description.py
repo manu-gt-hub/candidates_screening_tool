@@ -14,7 +14,7 @@ def load_job_description(spark, config):
     """
     path = config.ROLE_DESCRIPTION_LOCAL_PATH
     print(f"Loading job description from: {path}")
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8") as f:
         text = f.read()
     print(f"\u2713 Loaded ({len(text)} chars)")
 
