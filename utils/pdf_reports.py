@@ -4,6 +4,7 @@ Requires ``reportlab`` — import this module only AFTER ``%pip install reportla
 """
 import os
 from datetime import datetime
+from xml.sax.saxutils import escape as _xml_escape
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -19,6 +20,13 @@ from reportlab.platypus import (
 # ======================================================================
 #  Helpers
 # ======================================================================
+
+def _esc(text):
+    """HTML-escape text so reportlab Paragraph doesn't choke on < or &."""
+    if not text:
+        return text or ""
+    return _xml_escape(str(text))
+
 
 _MAX_FILENAME_LEN = 80
 
@@ -131,12 +139,12 @@ def build_technical_test_pdf(candidate_data, output_path, logo_path=None):
 
     # Title
     test_title = test_data.get("test_title", f"{role} Screening Test")
-    story.append(Paragraph(test_title, S["title"]))
+    story.append(Paragraph(_esc(test_title), S["title"]))
 
     # Instructions (full text — no truncation)
     instructions = test_data.get("instructions", "")
     if instructions:
-        story.append(Paragraph(f"<b>Instructions:</b> {instructions}", S["instructions"]))
+        story.append(Paragraph(f"<b>Instructions:</b> {_esc(instructions)}", S["instructions"]))
     else:
         story.append(Paragraph(
             "<b>Instructions:</b> Answer each scenario clearly and concisely. "
@@ -150,13 +158,13 @@ def build_technical_test_pdf(candidate_data, output_path, logo_path=None):
             sc = sc.asDict()
         num = sc.get("number", i)
         title = sc.get("title", f"Technical Scenario {i}")
-        story.append(Paragraph(f"Scenario {num} \u2014 {title}", S["scenario"]))
+        story.append(Paragraph(f"Scenario {num} \u2014 {_esc(title)}", S["scenario"]))
         if sc.get("description"):
-            story.append(Paragraph(sc["description"], S["body"]))
+            story.append(Paragraph(_esc(sc["description"]), S["body"]))
         if sc.get("example"):
-            story.append(Paragraph(f"<b>Example:</b> {sc['example']}", S["example"]))
+            story.append(Paragraph(f"<b>Example:</b> {_esc(sc['example'])}", S["example"]))
         if sc.get("question"):
-            story.append(Paragraph(f"<b>Question:</b> {sc['question']}", S["question"]))
+            story.append(Paragraph(f"<b>Question:</b> {_esc(sc['question'])}", S["question"]))
 
     doc.build(story)
     return filename
@@ -250,15 +258,15 @@ def build_ranking_report_pdf(ranking_rows, output_path, logo_path=None,
         cand_seniority = r.get("candidate_seniority", "") or ""
         role_info = f"{cand_role} \u00b7 " if cand_role else ""
         story.append(Paragraph(
-            f"{name}  <font color='{color}'><b>{pct:.0f}%</b></font>  "
-            f"\u2014  {role_info}{cand_seniority} \u00b7 {r['years_of_experience']}y exp"
+            f"{_esc(name)}  <font color='{color}'><b>{pct:.0f}%</b></font>  "
+            f"\u2014  {_esc(role_info)}{_esc(cand_seniority)} \u00b7 {r['years_of_experience']}y exp"
             f"{badge_html}",
             S["candidate"],
         ))
-        story.append(Paragraph(r["report_summary"] or "", S["body"]))
-        story.append(Paragraph(f"Technologies: {techs}", S["techs"]))
+        story.append(Paragraph(_esc(r["report_summary"] or ""), S["body"]))
+        story.append(Paragraph(f"Technologies: {_esc(techs)}", S["techs"]))
         if gaps:
-            story.append(Paragraph(f"Gaps: {gaps}", S["gaps"]))
+            story.append(Paragraph(f"Gaps: {_esc(gaps)}", S["gaps"]))
 
     doc.build(story)
     return report_file
@@ -308,7 +316,7 @@ def build_evaluation_report_pdf(ev, output_path):
 
     # Header
     story.append(Paragraph("Technical Response Evaluation Report", S["title"]))
-    story.append(Paragraph(f"Candidate: {name}", S["subtitle"]))
+    story.append(Paragraph(f"Candidate: {_esc(name)}", S["subtitle"]))
     story.append(HRFlowable(width="100%", thickness=1, color=HexColor("#cccccc")))
     story.append(Spacer(1, 0.4*cm))
 
@@ -317,7 +325,7 @@ def build_evaluation_report_pdf(ev, output_path):
     rec = ev.get("overall_recommendation", "N/A") or "N/A"
     lbl_style = ParagraphStyle("lbl", parent=base["Normal"], alignment=TA_CENTER, fontSize=9, textColor=HexColor("#666666"))
     card = Table(
-        [[Paragraph(f"{match_pct:.0f}%", _score_style(match_pct)), Paragraph(rec, _rec_style(rec))],
+        [[Paragraph(f"{match_pct:.0f}%", _score_style(match_pct)), Paragraph(_esc(rec), _rec_style(rec))],
          [Paragraph("Role Match", lbl_style), Paragraph("Recommendation", lbl_style)]],
         colWidths=[doc.width / 2] * 2, rowHeights=[45, 18],
     )
@@ -333,14 +341,14 @@ def build_evaluation_report_pdf(ev, output_path):
 
     # Suitability
     story.append(Paragraph("Suitability Assessment", S["section"]))
-    story.append(Paragraph(ev.get("suitability_assessment", ""), S["body"]))
+    story.append(Paragraph(_esc(ev.get("suitability_assessment", "")), S["body"]))
 
     # Highlights
     highlights = ev.get("highlights") or []
     if highlights:
         story.append(Paragraph("Key Highlights", S["section"]))
         for h in highlights:
-            story.append(Paragraph(f"\u2022 {h}", S["bullet"]))
+            story.append(Paragraph(f"\u2022 {_esc(h)}", S["bullet"]))
 
     # Scenario evaluations
     scenarios = ev.get("scenario_evaluations") or []
@@ -352,8 +360,8 @@ def build_evaluation_report_pdf(ev, output_path):
             num, title = sc.get("scenario_number", "?"), sc.get("scenario_title", "")
             sc_score = sc.get("score", 0) or 0
             color = _score_color(sc_score)
-            story.append(Paragraph(f"Scenario {num} \u2014 {title}  <font color='{color}'><b>[{sc_score:.0f}/100]</b></font>", S["sc_title"]))
-            story.append(Paragraph(sc.get("feedback", ""), S["feedback"]))
+            story.append(Paragraph(f"Scenario {num} \u2014 {_esc(title)}  <font color='{color}'><b>[{sc_score:.0f}/100]</b></font>", S["sc_title"]))
+            story.append(Paragraph(_esc(sc.get("feedback", "")), S["feedback"]))
 
     # Strengths / Weaknesses / Improvements
     _sections = [
@@ -365,7 +373,7 @@ def build_evaluation_report_pdf(ev, output_path):
         if items:
             story.append(Paragraph(label, S["section"]))
             for item in items:
-                story.append(Paragraph(f"{icon} {item}", S["bullet"]))
+                story.append(Paragraph(f"{icon} {_esc(item)}", S["bullet"]))
 
     doc.build(story)
     return fpath

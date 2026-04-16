@@ -94,7 +94,7 @@ candidates_manager_dbx/
 ├── config.py                            # Local config (gitignored)
 ├── build_setup.py                       # Bootstrap script
 ├── run_local.py                         # Local runner (no Spark needed)
-├── README.md / README_quick_guide.md
+├── README.md / README_quick_start.md
 ├── tech_scenarios_creator               # Notebook 1: CV ranking + test generation
 ├── tech_responses_evaluator             # Notebook 2: Response evaluation
 ├── utils/
