@@ -38,7 +38,10 @@ def parse_pdfs(pdf_dir):
                 text = "\n\n".join(
                     page.extract_text() or "" for page in pdf.pages
                 )
-            results.append({"path": fpath, "full_text": text})
+            if text.strip():
+                results.append({"path": fpath, "full_text": text})
+            else:
+                print(f"  \u26a0 Skipped (empty text): {fname}")
 
     print(f"\u2713 {len(results)} PDF(s) parsed from {pdf_dir}")
     return results

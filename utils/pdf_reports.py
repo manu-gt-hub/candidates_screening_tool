@@ -20,14 +20,13 @@ from reportlab.platypus import (
 #  Helpers
 # ======================================================================
 
+_MAX_FILENAME_LEN = 80
+
+
 def _safe_name(name):
-    return "".join(c for c in name if c.isalnum() or c in (" ", "-", "_")).strip()
-
-
-def _truncate(text, max_chars=260):
-    if not text or len(text) <= max_chars:
-        return text or ""
-    return text[:max_chars].rsplit(" ", 1)[0] + "..."
+    cleaned = "".join(c for c in name if c.isalnum() or c in (" ", "-", "_")).strip()
+    cleaned = cleaned.replace(" ", "_")
+    return cleaned[:_MAX_FILENAME_LEN]
 
 
 def _score_color(pct):

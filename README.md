@@ -26,7 +26,7 @@ candidates_manager_dbx/
 ├── create_jobs.py                       # Script to create scheduled Databricks Jobs
 ├── .gitignore
 ├── README.md
-├── README_quick_guide.md                # Quick-start guide
+├── README_quick_start.md                # Quick-start guide
 ├── tech_scenarios_creator               # Notebook 1: CV ranking + test generation
 ├── tech_responses_evaluator             # Notebook 2: Technical response evaluation
 ├── utils/                               # Shared utility modules

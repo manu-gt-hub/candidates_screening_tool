@@ -48,11 +48,7 @@ job_description_text = load_job_description(spark, config)
 # DBTITLE 1,Evaluate responses with AI
 # Step 3: Evaluate each technical response against the role description
 # Prompt text comes from utils/prompts.py — single source of truth for both modes.
-from utils.prompts import build_evaluation_prompt_parts
-
-def _sql_esc(s):
-    """Escape single quotes for SQL string literals."""
-    return s.replace("'", "''")
+from utils.prompts import build_evaluation_prompt_parts, sql_esc
 
 _ev_prefix, _ev_sep, _ev_suffix = build_evaluation_prompt_parts()
 
@@ -66,9 +62,9 @@ FROM (
       ai_query(
         '{config.AI_MODEL}',
         CONCAT(
-          '{_sql_esc(_ev_prefix)}',
+          '{sql_esc(_ev_prefix)}',
           rd.full_text,
-          '{_sql_esc(_ev_sep)}',
+          '{sql_esc(_ev_sep)}',
           r.full_text
         ),
         responseFormat => 'STRUCT<result:STRUCT<candidate_name:STRING, match_percentage:DOUBLE, suitability_assessment:STRING, highlights:ARRAY<STRING>, strengths:ARRAY<STRING>, weaknesses:ARRAY<STRING>, scenario_evaluations:ARRAY<STRUCT<scenario_number:INT, scenario_title:STRING, score:DOUBLE, feedback:STRING>>, overall_recommendation:STRING, improvement_areas:ARRAY<STRING>>>'

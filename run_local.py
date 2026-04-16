@@ -19,6 +19,7 @@ if _PROJECT_DIR not in sys.path:
     sys.path.insert(0, _PROJECT_DIR)
 
 import config  # noqa: E402
+from utils.config_loader import validate_config  # noqa: E402
 from utils.pipeline import (  # noqa: E402
     parse_pdfs,
     load_job_description,
@@ -38,6 +39,7 @@ def run_scenarios():
     print("=" * 60)
     print("  CV Ranking & Technical Test Generation (Local Mode)")
     print("=" * 60)
+    validate_config(config, mode="scenarios")
 
     cv_docs = parse_pdfs(config.CVS_PATH)
     if not cv_docs:
@@ -86,6 +88,7 @@ def run_evaluate():
     print("=" * 60)
     print("  Technical Response Evaluation (Local Mode)")
     print("=" * 60)
+    validate_config(config, mode="evaluator")
 
     response_docs = parse_pdfs(config.TECHNICAL_RESPONSES_PATH)
     if not response_docs:
