@@ -47,6 +47,14 @@ job_description_text = load_job_description(spark, config)
 
 # DBTITLE 1,Evaluate responses with AI
 # Step 3: Evaluate each technical response against the role description
+# Prompt text comes from utils/prompts.py — single source of truth for both modes.
+from utils.prompts import build_evaluation_prompt_parts
+
+def _sql_esc(s):
+    """Escape single quotes for SQL string literals."""
+    return s.replace("'", "''")
+
+_ev_prefix, _ev_sep, _ev_suffix = build_evaluation_prompt_parts()
 
 evaluations_df = spark.sql(f"""
 SELECT
@@ -58,37 +66,9 @@ FROM (
       ai_query(
         '{config.AI_MODEL}',
         CONCAT(
-          'You are an expert technical evaluator . You must evaluate a candidate technical test response against the role description provided.
-
-Evaluate the quality, depth, and correctness of their answers to each scenario. Consider:
-- Technical accuracy and understanding of the problem
-- Practicality and feasibility of proposed solutions
-- Alignment with the role requirements (technologies, seniority level, responsibilities)
-- Problem-solving approach and critical thinking
-- Communication clarity
-
-Return ONLY a valid JSON object with these fields:
-- candidate_name (string): Name of the candidate (infer from the document or filename)
-- match_percentage (number): Overall match score 0-100 for the role
-- suitability_assessment (string): 3-4 sentences on overall suitability for the role
-- highlights (array of strings): 3-5 standout positive aspects of the responses
-- strengths (array of strings): 4-6 technical and soft skill strengths demonstrated
-- weaknesses (array of strings): 3-5 areas of concern or weakness identified
-- scenario_evaluations (array of objects): Per-scenario evaluation, each with:
-  - scenario_number (integer)
-  - scenario_title (string)
-  - score (number): 0-100
-  - feedback (string): 2-3 sentences of specific feedback
-- overall_recommendation (string): One of "Strong Hire", "Hire", "Lean Hire", "Lean No Hire", "No Hire"
-- improvement_areas (array of strings): 3-4 specific suggestions for the candidate
-
-=== ROLE DESCRIPTION ===
-',
+          '{_sql_esc(_ev_prefix)}',
           rd.full_text,
-          '
-
-=== CANDIDATE TECHNICAL RESPONSE ===
-',
+          '{_sql_esc(_ev_sep)}',
           r.full_text
         ),
         responseFormat => 'STRUCT<result:STRUCT<candidate_name:STRING, match_percentage:DOUBLE, suitability_assessment:STRING, highlights:ARRAY<STRING>, strengths:ARRAY<STRING>, weaknesses:ARRAY<STRING>, scenario_evaluations:ARRAY<STRUCT<scenario_number:INT, scenario_title:STRING, score:DOUBLE, feedback:STRING>>, overall_recommendation:STRING, improvement_areas:ARRAY<STRING>>>'

@@ -73,8 +73,8 @@ def _get_test_styles():
         _TEST_STYLES = {
             "title": ParagraphStyle(
                 "TT_Title", parent=base["Heading1"],
-                fontSize=18, fontName="Helvetica-Bold",
-                spaceAfter=8, spaceBefore=0, textColor=HexColor("#1B365D"),
+                fontSize=16, fontName="Helvetica-Bold",
+                spaceAfter=6, spaceBefore=0, textColor=HexColor("#1B365D"),
             ),
             "instructions": ParagraphStyle(
                 "TT_Instr", parent=base["Normal"],
@@ -83,23 +83,23 @@ def _get_test_styles():
             ),
             "scenario": ParagraphStyle(
                 "TT_Sc", parent=base["Heading2"],
-                fontSize=12.5, fontName="Helvetica-Bold",
-                spaceBefore=18, spaceAfter=4, textColor=HexColor("#00695C"),
+                fontSize=11.5, fontName="Helvetica-Bold",
+                spaceBefore=12, spaceAfter=4, textColor=HexColor("#00695C"),
             ),
             "body": ParagraphStyle(
                 "TT_Body", parent=base["Normal"],
-                fontSize=10.5, fontName="Helvetica", alignment=TA_JUSTIFY,
-                spaceAfter=4, leading=13.5, textColor=HexColor("#333333"),
+                fontSize=10, fontName="Helvetica", alignment=TA_JUSTIFY,
+                spaceAfter=4, leading=12.5, textColor=HexColor("#333333"),
             ),
             "example": ParagraphStyle(
                 "TT_Ex", parent=base["Normal"],
-                fontSize=10.5, fontName="Helvetica-Oblique",
-                textColor=HexColor("#CC8400"), spaceAfter=4, leading=13.5,
+                fontSize=10, fontName="Helvetica-Oblique",
+                textColor=HexColor("#CC8400"), spaceAfter=4, leading=12.5,
             ),
             "question": ParagraphStyle(
                 "TT_Q", parent=base["Normal"],
-                fontSize=10.5, fontName="Helvetica-Bold",
-                spaceAfter=14, leading=13.5, textColor=HexColor("#8B1A1A"),
+                fontSize=10, fontName="Helvetica-Bold",
+                spaceAfter=10, leading=12.5, textColor=HexColor("#8B1A1A"),
             ),
         }
     return _TEST_STYLES
