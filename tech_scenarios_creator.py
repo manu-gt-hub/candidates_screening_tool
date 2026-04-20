@@ -170,9 +170,12 @@ for row, test in _test_results:
     d["technical_test"] = test
     _combined_rows.append(d)
 
-top_candidates_with_tests_df = spark.createDataFrame(
-    _combined_rows, _candidates_df.schema.add("technical_test", _test_df.schema["technical_test"].dataType)
-)
+if _combined_rows:
+    top_candidates_with_tests_df = spark.createDataFrame(
+        _combined_rows, _candidates_df.schema.add("technical_test", _test_df.schema["technical_test"].dataType)
+    )
+else:
+    top_candidates_with_tests_df = spark.createDataFrame([], _candidates_df.schema)
 
 print(f"\nCandidates with technical tests generated:")
 display(top_candidates_with_tests_df)
