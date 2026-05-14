@@ -86,6 +86,7 @@ for row in evaluation_rows:
 # DBTITLE 1,Generate evaluation PDF reports
 # ── Generate evaluation PDF reports ──────────────────────────────
 # Re-import config and utils after pip install
+import os
 from utils.config_loader import init_notebook_env
 init_notebook_env(dbutils)
 import config

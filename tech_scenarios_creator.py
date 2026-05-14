@@ -182,6 +182,7 @@ print(f"\n{len(_combined_rows)} candidate(s) with unique technical tests (topics
 # DBTITLE 1,Generate PDF reports
 # ── Generate PDF reports ─────────────────────────────────────────
 # Re-import config and utils after pip install
+import os
 from utils.config_loader import init_notebook_env
 init_notebook_env(dbutils)
 import config
