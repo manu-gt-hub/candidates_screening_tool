@@ -142,12 +142,20 @@ def build_technical_test_pdf(candidate_data, output_path, logo_path=None):
     story.append(Paragraph(_esc(test_title), S["title"]))
 
     # Instructions (full text — no truncation)
+    # Always prepend a bold reminder to write answers on the same document
+    _answer_reminder = (
+        "<b>Write your answers directly on this document, below each scenario, "
+        "and return the completed PDF.</b>"
+    )
     instructions = test_data.get("instructions", "")
     if instructions:
-        story.append(Paragraph(f"<b>Instructions:</b> {_esc(instructions)}", S["instructions"]))
+        story.append(Paragraph(
+            f"<b>Instructions:</b> {_answer_reminder} {_esc(instructions)}",
+            S["instructions"],
+        ))
     else:
         story.append(Paragraph(
-            "<b>Instructions:</b> Answer each scenario clearly and concisely. "
+            f"<b>Instructions:</b> {_answer_reminder} Answer clearly and concisely. "
             "If you know specific technologies that apply, use them in your response to solve the proposed scenarios.",
             S["instructions"],
         ))
