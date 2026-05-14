@@ -5,6 +5,7 @@
 """
 import json
 import os
+from types import ModuleType
 
 _SYSTEM_PROMPT = (
     "You are an expert assistant. "
@@ -42,7 +43,7 @@ def _strip_fences(text):
     return text
 
 
-def query_llm(prompt, config):
+def query_llm(prompt: str, config: ModuleType) -> dict:
     """Send a prompt to the configured LLM and return the parsed JSON response.
 
     Retries up to ``_MAX_RETRIES`` times on malformed JSON before raising.
@@ -155,8 +156,8 @@ def _get_token():
     try:
         from dbruntime.databricks_repl_context import get_context
         return get_context().apiToken
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"  ⚠ Could not retrieve token from dbruntime: {exc}")
     raise RuntimeError("Cannot retrieve Databricks API token")
 
 
@@ -170,7 +171,7 @@ def _get_host():
         spark = SparkSession.getActiveSession()
         if spark:
             return spark.conf.get("spark.databricks.workspaceUrl")
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"  ⚠ Could not retrieve workspace URL from Spark: {exc}")
     raise RuntimeError("Cannot determine Databricks workspace URL")
 

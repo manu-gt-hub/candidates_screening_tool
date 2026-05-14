@@ -5,6 +5,8 @@ LLM calls, and data transformation.  It is the engine behind
 ``run_local.py`` and can also be imported from Databricks notebooks.
 """
 import os
+from types import ModuleType
+from typing import List, Dict, Optional
 
 from utils.llm_client import query_llm
 from utils.prompts import (
@@ -17,7 +19,7 @@ from utils.topic_pools import get_topics
 
 # ── PDF parsing (local mode — pdfplumber) ────────────────────────────
 
-def parse_pdfs(pdf_dir):
+def parse_pdfs(pdf_dir: str) -> List[Dict[str, str]]:
     """Extract text from all PDFs in *pdf_dir* using pdfplumber.
 
     Returns:
@@ -49,7 +51,7 @@ def parse_pdfs(pdf_dir):
 
 # ── Job description ──────────────────────────────────────────────
 
-def load_job_description(config):
+def load_job_description(config: ModuleType) -> str:
     """Load job description from the configured text file.
 
     Returns:
@@ -64,7 +66,7 @@ def load_job_description(config):
 
 # ── Ranking ───────────────────────────────────────────────────────
 
-def rank_candidates(cv_documents, jd_text, config):
+def rank_candidates(cv_documents: List[Dict[str, str]], jd_text: str, config: ModuleType) -> List[dict]:
     """Rank each CV against the job description.
 
     Args:
@@ -95,7 +97,7 @@ def rank_candidates(cv_documents, jd_text, config):
 
 # ── Technical test generation ────────────────────────────────────
 
-def generate_tests(ranked_candidates, jd_text, config):
+def generate_tests(ranked_candidates: List[dict], jd_text: str, config: ModuleType) -> List[dict]:
     """Generate unique technical tests per candidate, based on the JD.
 
     Each candidate receives a different set of 3 topics from the pool
@@ -148,7 +150,7 @@ def generate_tests(ranked_candidates, jd_text, config):
 
 # ── Response evaluation ──────────────────────────────────────────
 
-def evaluate_responses(response_documents, jd_text, config):
+def evaluate_responses(response_documents: List[Dict[str, str]], jd_text: str, config: ModuleType) -> List[dict]:
     """Evaluate candidate technical responses.
 
     Returns:

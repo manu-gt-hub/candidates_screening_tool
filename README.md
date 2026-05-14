@@ -23,10 +23,9 @@ candidates_manager_dbx/
 ├── config.py                            # Local config with real values (gitignored)
 ├── build_setup.py                       # Bootstrap script: creates folders + config.py
 ├── run_local.py                         # Local runner (no Spark needed)
-├── create_jobs.py                       # Script to create scheduled Databricks Jobs
 ├── .gitignore
 ├── README.md
-├── README_quick_start.md                # Quick-start guide
+├── quick_start/                         # Quick-start guides (DBX & Local)
 ├── tech_scenarios_creator               # Notebook 1: CV ranking + test generation
 ├── tech_responses_evaluator             # Notebook 2: Technical response evaluation
 ├── utils/                               # Shared utility modules
@@ -37,6 +36,7 @@ candidates_manager_dbx/
 │   ├── pipeline.py                      #   Core pipeline logic (for run_local.py)
 │   ├── pdf_parser.py                    #   PDF parsing with ai_parse_document (DBX)
 │   ├── job_description.py               #   Job description loading (local file)
+│   ├── topic_pools.py                   #   Topic rotation for unique technical tests
 │   └── pdf_reports.py                   #   PDF generation (tests, ranking, evaluations)
 └── resources/                            # All input/output data (gitignored)
     ├── cvs_landing/                     # ↓ Input: candidate CV PDFs
@@ -134,21 +134,6 @@ All paths are resolved **relative to `config.py`** using `os.path`, so the proje
 - `pip install boto3 pdfplumber reportlab`
 - An API key for a Bedrock-compatible provider
 
-### 4. Job orchestration (optional, Databricks only)
-
-`create_jobs.py` creates two periodic Databricks Jobs:
-
-| Job | Notebook | Description |
-|---|---|---|
-| **CV Ranking & Technical Test Generation** | `tech_scenarios_creator` | Processes CVs in `cvs_landing/` |
-| **Technical Response Evaluator** | `tech_responses_evaluator` | Processes responses in `technical_responses/landing/` |
-
-```python
-%run ./create_jobs
-```
-
-> **Note**: File-arrival triggers are not supported for workspace paths. These jobs use a cron schedule instead (default: every 15 minutes, configurable via `CRON_SCHEDULE` and `TIMEZONE` in the script).
-
 ---
 
 ## Databricks Mode (Notebooks)
@@ -159,19 +144,16 @@ All paths are resolved **relative to `config.py`** using `os.path`, so the proje
 
 #### Pipeline flow
 
-```
-[CV PDFs] → ai_parse_document → [Extracted text]
-                                       ↓
-[Job description] ───────→ ai_query → [Ranking + evaluation]
-                                       ↓
-                       ┌──────────────┴──────────────┐
-                       ↓                            ↓
-            Filter: >= threshold          All candidates
-            (or all if GEN_ALL=True)            ↓
-                       ↓                  Ranking Report PDF
-                  ai_query → [3 scenarios]
-                       ↓
-                One-page PDF tests
+```mermaid
+flowchart TD
+    A[CV PDFs] -->|ai_parse_document| B[Extracted text]
+    C[Job description] --> D
+    B --> D[ai_query: Ranking]
+    D --> E[All candidates ranked]
+    E --> F[Ranking Report PDF]
+    E --> G{Score >= threshold?}
+    G -->|Yes / GEN_ALL| H[ai_query: 3 scenarios per candidate]
+    H --> I[Technical Test PDFs]
 ```
 
 #### Cells (execution order)
@@ -192,12 +174,12 @@ All paths are resolved **relative to `config.py`** using `os.path`, so the proje
 
 #### Pipeline flow
 
-```
-[Response PDFs] → ai_parse_document → [Extracted text]
-                                            ↓
-[Job description] ────────────→ ai_query → [Evaluation per candidate]
-                                            ↓
-                                 reportlab → [PDF evaluation reports]
+```mermaid
+flowchart TD
+    A[Response PDFs] -->|ai_parse_document| B[Extracted text]
+    C[Job description] --> D
+    B --> D[ai_query: Evaluation per candidate]
+    D -->|reportlab| E[PDF evaluation reports]
 ```
 
 #### Cells (execution order)
@@ -230,12 +212,12 @@ python run_local.py all         # run both
 
 ### Architecture
 
-```
-run_local.py
-  └→ utils/pipeline.py      (core logic: parse, rank, test, evaluate)
-       ├→ utils/prompts.py   (prompt templates)
-       └→ utils/llm_client.py (boto3 Bedrock)
-  └→ utils/pdf_reports.py   (PDF generation — shared with notebooks)
+```mermaid
+flowchart TD
+    A[run_local.py] --> B[utils/pipeline.py]
+    A --> C[utils/pdf_reports.py]
+    B --> D[utils/prompts.py]
+    B --> E[utils/llm_client.py]
 ```
 
 `llm_client.py` supports two backends:

@@ -5,17 +5,9 @@
 
 # DBTITLE 1,Setup & Configuration
 # ── Setup & Configuration ────────────────────────────────────────
-import sys, os
+from utils.config_loader import init_notebook_env, load_config, validate_config
 
-# Ensure project dir is in sys.path and clear stale module caches
-_nb_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
-_project_dir = f"/Workspace{os.path.dirname(_nb_path)}"
-if _project_dir not in sys.path:
-    sys.path.insert(0, _project_dir)
-for _m in [m for m in sys.modules if m == "config" or m.startswith("utils")]:
-    del sys.modules[_m]
-
-from utils.config_loader import load_config, validate_config
+init_notebook_env(dbutils)
 
 config = load_config(dbutils)
 validate_config(config, mode="scenarios")
@@ -129,8 +121,12 @@ _candidates_df = spark.sql(f"""
 _candidate_rows = _candidates_df.collect()
 print(f"\n{len(_candidate_rows)} candidate(s) qualify for technical tests")
 
+if not _candidate_rows:
+    print("No candidates qualify for technical tests — skipping generation.")
+    dbutils.notebook.exit("No qualifying candidates")
+
 # Determine the JD role for topic pool selection
-_jd_role = _candidate_rows[0]["jd_role"] if _candidate_rows else None
+_jd_role = _candidate_rows[0]["jd_role"]
 print(f"JD role detected: {_jd_role}  \u2192  topic pool selected")
 
 # Generate one test per candidate, each with unique topics from the pool
@@ -186,13 +182,8 @@ print(f"\n{len(_combined_rows)} candidate(s) with unique technical tests (topics
 # DBTITLE 1,Generate PDF reports
 # ── Generate PDF reports ─────────────────────────────────────────
 # Re-import config and utils after pip install
-import sys, os
-_nb_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
-_project_dir = f"/Workspace{os.path.dirname(_nb_path)}"
-if _project_dir not in sys.path:
-    sys.path.insert(0, _project_dir)
-for _m in [m for m in sys.modules if m == "config" or m.startswith("utils")]:
-    del sys.modules[_m]
+from utils.config_loader import init_notebook_env
+init_notebook_env(dbutils)
 import config
 
 from utils.pdf_reports import build_technical_test_pdf, build_ranking_report_pdf

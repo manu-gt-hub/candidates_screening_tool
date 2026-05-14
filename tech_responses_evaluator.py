@@ -6,17 +6,9 @@
 
 # DBTITLE 1,Setup & Configuration
 # ── Setup & Configuration ────────────────────────────────────────
-import sys, os
+from utils.config_loader import init_notebook_env, load_config, validate_config
 
-# Ensure project dir is in sys.path and clear stale module caches
-_nb_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
-_project_dir = f"/Workspace{os.path.dirname(_nb_path)}"
-if _project_dir not in sys.path:
-    sys.path.insert(0, _project_dir)
-for _m in [m for m in sys.modules if m == "config" or m.startswith("utils")]:
-    del sys.modules[_m]
-
-from utils.config_loader import load_config, validate_config
+init_notebook_env(dbutils)
 
 config = load_config(dbutils)
 validate_config(config, mode="evaluator")
@@ -94,13 +86,8 @@ for row in evaluation_rows:
 # DBTITLE 1,Generate evaluation PDF reports
 # ── Generate evaluation PDF reports ──────────────────────────────
 # Re-import config and utils after pip install
-import sys, os
-_nb_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
-_project_dir = f"/Workspace{os.path.dirname(_nb_path)}"
-if _project_dir not in sys.path:
-    sys.path.insert(0, _project_dir)
-for _m in [m for m in sys.modules if m == "config" or m.startswith("utils")]:
-    del sys.modules[_m]
+from utils.config_loader import init_notebook_env
+init_notebook_env(dbutils)
 import config
 
 from utils.pdf_reports import build_evaluation_report_pdf

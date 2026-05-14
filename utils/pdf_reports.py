@@ -4,6 +4,7 @@ Requires ``reportlab`` — import this module only AFTER ``%pip install reportla
 """
 import os
 from datetime import datetime
+from typing import Dict, List, Optional, Set
 from xml.sax.saxutils import escape as _xml_escape
 
 from reportlab.lib.pagesizes import A4
@@ -37,8 +38,9 @@ def _safe_name(name):
     return cleaned[:_MAX_FILENAME_LEN]
 
 
-def _score_color(pct):
-    if pct >= 70:
+def _score_color(pct, green_threshold=70):
+    """Return a hex colour based on score tier."""
+    if pct >= green_threshold:
         return "#2E7D32"
     elif pct >= 50:
         return "#F57F17"
@@ -112,7 +114,7 @@ def _get_test_styles():
     return _TEST_STYLES
 
 
-def build_technical_test_pdf(candidate_data, output_path, logo_path=None):
+def build_technical_test_pdf(candidate_data: dict, output_path: str, logo_path: Optional[str] = None) -> str:
     """Generate a PDF technical test for a candidate.
 
     Content flows across multiple pages automatically via reportlab\'s
@@ -142,12 +144,20 @@ def build_technical_test_pdf(candidate_data, output_path, logo_path=None):
     story.append(Paragraph(_esc(test_title), S["title"]))
 
     # Instructions (full text — no truncation)
+    # Always prepend a bold reminder to write answers on the same document
+    _answer_reminder = (
+        "<b>Write your answers directly on this document, below each scenario, "
+        "and return the completed PDF.</b>"
+    )
     instructions = test_data.get("instructions", "")
     if instructions:
-        story.append(Paragraph(f"<b>Instructions:</b> {_esc(instructions)}", S["instructions"]))
+        story.append(Paragraph(
+            f"<b>Instructions:</b> {_answer_reminder} {_esc(instructions)}",
+            S["instructions"],
+        ))
     else:
         story.append(Paragraph(
-            "<b>Instructions:</b> Answer each scenario clearly and concisely. "
+            f"<b>Instructions:</b> {_answer_reminder} Answer clearly and concisely. "
             "If you know specific technologies that apply, use them in your response to solve the proposed scenarios.",
             S["instructions"],
         ))
@@ -174,8 +184,8 @@ def build_technical_test_pdf(candidate_data, output_path, logo_path=None):
 #  2. Candidate Ranking Report  (single PDF — suggested ranking, no discards)
 # ======================================================================
 
-def build_ranking_report_pdf(ranking_rows, output_path, logo_path=None,
-                              min_threshold=70, tested_names=None):
+def build_ranking_report_pdf(ranking_rows: List[dict], output_path: str, logo_path: Optional[str] = None,
+                              min_threshold: int = 70, tested_names: Optional[Set[str]] = None) -> str:
     """Generate a ranking summary PDF with colour-coded tiers.
 
     All candidates appear in a single ranked list.  Colour coding:
@@ -206,13 +216,6 @@ def build_ranking_report_pdf(ranking_rows, output_path, logo_path=None,
         "gaps": ParagraphStyle("RR_Gp", parent=base["Normal"], fontSize=8, fontName="Helvetica", textColor=HexColor("#999999"), spaceAfter=8, leading=10),
     }
 
-    def _tier_color(pct):
-        if pct >= min_threshold:
-            return "#2E7D32"
-        elif pct >= 50:
-            return "#F57F17"
-        return "#C62828"
-
     report_file = os.path.join(output_path, f"Candidate_Ranking_Report_{_timestamp()}.pdf")
     doc = SimpleDocTemplate(report_file, pagesize=A4,
                             rightMargin=1.5*cm, leftMargin=1.5*cm,
@@ -240,16 +243,16 @@ def build_ranking_report_pdf(ranking_rows, output_path, logo_path=None,
     story.append(Spacer(1, 4*mm))
 
     # Single ranked list (sorted by score descending)
-    sorted_rows = sorted(ranking_rows, key=lambda r: r["ranking_percentage"], reverse=True)
+    sorted_rows = sorted(ranking_rows, key=lambda r: r.get("ranking_percentage", 0), reverse=True)
 
     story.append(Paragraph(f"Suggested Ranking ({len(sorted_rows)} candidates)", S["section"]))
 
     for r in sorted_rows:
-        pct = r["ranking_percentage"]
-        color = _tier_color(pct)
-        techs = ", ".join(r["key_technologies"][:10]) if r["key_technologies"] else "N/A"
-        gaps = ", ".join(r["gaps"][:5]) if r["gaps"] else ""
-        name = r["name"]
+        pct = r.get("ranking_percentage", 0)
+        color = _score_color(pct, green_threshold=min_threshold)
+        techs = ", ".join((r.get("key_technologies") or [])[:10]) or "N/A"
+        gaps = ", ".join((r.get("gaps") or [])[:5])
+        name = r.get("name", "Unknown")
         has_test = name in tested_names
 
         # Name + score + seniority + optional badge
@@ -259,11 +262,11 @@ def build_ranking_report_pdf(ranking_rows, output_path, logo_path=None,
         role_info = f"{cand_role} \u00b7 " if cand_role else ""
         story.append(Paragraph(
             f"{_esc(name)}  <font color='{color}'><b>{pct:.0f}%</b></font>  "
-            f"\u2014  {_esc(role_info)}{_esc(cand_seniority)} \u00b7 {r['years_of_experience']}y exp"
+            f"\u2014  {_esc(role_info)}{_esc(cand_seniority)} \u00b7 {r.get('years_of_experience', 'N/A')}y exp"
             f"{badge_html}",
             S["candidate"],
         ))
-        story.append(Paragraph(_esc(r["report_summary"] or ""), S["body"]))
+        story.append(Paragraph(_esc(r.get("report_summary") or ""), S["body"]))
         story.append(Paragraph(f"Technologies: {_esc(techs)}", S["techs"]))
         if gaps:
             story.append(Paragraph(f"Gaps: {_esc(gaps)}", S["gaps"]))
@@ -276,7 +279,7 @@ def build_ranking_report_pdf(ranking_rows, output_path, logo_path=None,
 #  3. Evaluation Report PDF  (one per candidate)
 # ======================================================================
 
-def build_evaluation_report_pdf(ev, output_path):
+def build_evaluation_report_pdf(ev: dict, output_path: str) -> str:
     """Generate a colour-coded evaluation report for a single candidate.
 
     Returns:

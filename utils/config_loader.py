@@ -3,6 +3,28 @@ import os
 import sys
 
 
+def init_notebook_env(dbutils):
+    """Set up sys.path and clear stale module caches for Databricks notebooks.
+
+    Call this at the top of every notebook cell that needs fresh imports
+    after ``%pip install`` or ``restartPython()``.
+
+    Returns:
+        str: The resolved project directory path.
+    """
+    nb_path = (
+        dbutils.notebook.entry_point
+        .getDbutils().notebook().getContext()
+        .notebookPath().get()
+    )
+    project_dir = f"/Workspace{os.path.dirname(nb_path)}"
+    if project_dir not in sys.path:
+        sys.path.insert(0, project_dir)
+    for _m in [m for m in sys.modules if m == "config" or m.startswith("utils")]:
+        del sys.modules[_m]
+    return project_dir
+
+
 def load_config(dbutils):
     """Import and return config.py from the notebook's project directory.
 

@@ -138,6 +138,9 @@ _TEST_BODY = (
     "IMPORTANT \u2014 Instructions format:\n"
     '- Do NOT include any time limit or time window (e.g. "60 minutes", '
     '"90 minutes") in the instructions or test title\n'
+    "- The instructions MUST tell the candidate to write their answers directly on this same document, "
+    "below each scenario, and return the completed PDF. This is essential because the responses "
+    "will be evaluated automatically and need to include both the questions and answers in context.\n"
     "- The instructions MUST tell the candidate to answer clearly and concisely, "
     "applying specific technologies they know if applicable, to solve each scenario\n"
     "- Focus on practical reasoning and problem-solving approach\n\n"
